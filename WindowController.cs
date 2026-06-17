@@ -32,8 +32,10 @@ public static class WindowController
     private const int SW_RESTORE = 9;
     private const int SW_MINIMIZE = 6;
     private const int SW_MAXIMIZE = 3;
+    private const int SW_SHOWMAXIMIZED = 3;
     private const int WM_SYSCOMMAND = 0x0112;
     private const int SC_CLOSE = 0xF060;
+    private const uint OBJID_NATIVEOM = 0xFFFFFFF0;
     private const int GW_OWNER = 4;
     private const int GWL_EXSTYLE = -20;
     private const int DWMWA_CLOAKED = 14;
@@ -155,7 +157,30 @@ public static class WindowController
 
     public static bool IsMinimized(IntPtr handle) => IsIconic(handle);
 
-    public static bool IsMaximized(IntPtr handle) => IsZoomed(handle);
+    public static bool IsMaximized(IntPtr handle)
+    {
+        var placement = new WindowPlacement
+        {
+            Length = Marshal.SizeOf<WindowPlacement>()
+        };
+
+        if (!IsZoomed(handle) || !GetWindowPlacement(handle, ref placement) || placement.ShowCommand != SW_SHOWMAXIMIZED)
+        {
+            return false;
+        }
+
+        if (!TryGetWindowRectangle(handle, out var windowRect))
+        {
+            return false;
+        }
+
+        var workingArea = Screen.FromHandle(handle).WorkingArea;
+        const int frameTolerance = 12;
+        return windowRect.Left <= workingArea.Left + frameTolerance &&
+               windowRect.Top <= workingArea.Top + frameTolerance &&
+               windowRect.Right >= workingArea.Right - frameTolerance &&
+               windowRect.Bottom >= workingArea.Bottom - frameTolerance;
+    }
 
     public static bool TryGetWindowRectangle(IntPtr handle, out Rectangle rectangle)
     {
@@ -268,7 +293,59 @@ public static class WindowController
 
     public static void CloseWindow(IntPtr handle)
     {
+        if (string.Equals(GetProcessName(handle), "EXCEL", StringComparison.OrdinalIgnoreCase))
+        {
+            _ = TryCloseExcelWindow(handle);
+            return;
+        }
+
         PostMessage(handle, WM_SYSCOMMAND, new IntPtr(SC_CLOSE), IntPtr.Zero);
+    }
+
+    private static bool TryCloseExcelWindow(IntPtr handle)
+    {
+        object? excelWindow = null;
+        try
+        {
+            var dispatchId = new Guid("00020400-0000-0000-C000-000000000046");
+            var documentHandle = FindDescendantWindowByClass(handle, "EXCEL7");
+            var nativeHandle = documentHandle == IntPtr.Zero ? handle : documentHandle;
+            if (AccessibleObjectFromWindow(nativeHandle, OBJID_NATIVEOM, ref dispatchId, out excelWindow) != 0 ||
+                excelWindow is null)
+            {
+                return false;
+            }
+
+            ((dynamic)excelWindow).Close();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+        finally
+        {
+            if (excelWindow is not null && Marshal.IsComObject(excelWindow))
+            {
+                Marshal.FinalReleaseComObject(excelWindow);
+            }
+        }
+    }
+
+    private static IntPtr FindDescendantWindowByClass(IntPtr parent, string className)
+    {
+        var result = IntPtr.Zero;
+        EnumChildWindows(parent, (handle, _) =>
+        {
+            if (string.Equals(GetWindowClassName(handle), className, StringComparison.OrdinalIgnoreCase))
+            {
+                result = handle;
+                return false;
+            }
+
+            return true;
+        }, IntPtr.Zero);
+        return result;
     }
 
     public static void ToggleMaximizeWindow(IntPtr handle)
@@ -442,10 +519,24 @@ public static class WindowController
         }
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WindowPlacement
+    {
+        public int Length;
+        public int Flags;
+        public int ShowCommand;
+        public Point MinimumPosition;
+        public Point MaximumPosition;
+        public Rectangle NormalPosition;
+    }
+
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
     [DllImport("user32.dll")]
     private static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumChildWindows(IntPtr hWndParent, EnumWindowsProc enumProc, IntPtr lParam);
 
     [DllImport("user32.dll")]
     private static extern bool IsWindowVisible(IntPtr hWnd);
@@ -471,6 +562,9 @@ public static class WindowController
     [DllImport("user32.dll")]
     private static extern bool IsZoomed(IntPtr hWnd);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetWindowPlacement(IntPtr hWnd, ref WindowPlacement lpwndpl);
+
     [DllImport("user32.dll")]
     private static extern bool IsIconic(IntPtr hWnd);
 
@@ -482,6 +576,13 @@ public static class WindowController
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool PostMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("oleacc.dll")]
+    private static extern int AccessibleObjectFromWindow(
+        IntPtr hwnd,
+        uint objectId,
+        ref Guid interfaceId,
+        [MarshalAs(UnmanagedType.Interface)] out object? accessibleObject);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern int GetClassName(IntPtr hWnd, char[] lpClassName, int nMaxCount);

@@ -37,7 +37,7 @@ public sealed class OverlayForm : Form
         TopMost = true;
         BackColor = Color.FromArgb(28, 28, 28);
         Opacity = 0.86;
-        Size = new Size(328, 28);
+        Size = new Size(320, 28);
         Padding = new Padding(2);
 
         BuildButtons();
@@ -122,6 +122,10 @@ public sealed class OverlayForm : Form
         panel.Controls.Add(CreateMoveButton("↗", MoveDirection.UpRight));
         panel.Controls.Add(CreateMoveButton("↓", MoveDirection.Down));
 
+        var appExitButton = CreateFlatButton("X");
+        appExitButton.Click += (_, _) => _exitRequested();
+        panel.Controls.Add(appExitButton);
+
         _allCheck.Text = "ALL";
         _allCheck.ForeColor = Color.White;
         _allCheck.AutoSize = false;
@@ -136,10 +140,6 @@ public sealed class OverlayForm : Form
 
         var closeButton = CreateWindowActionButton("x", () => WindowController.CloseWindow(TargetWindow));
         panel.Controls.Add(closeButton);
-
-        var appExitButton = CreateFlatButton("APP", 34);
-        appExitButton.Click += (_, _) => _exitRequested();
-        panel.Controls.Add(appExitButton);
 
         Controls.Add(panel);
     }
