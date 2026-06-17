@@ -88,6 +88,18 @@ public static class WindowController
         return processId == CurrentProcessId;
     }
 
+    public static bool TryGetWindowRectangle(IntPtr handle, out Rectangle rectangle)
+    {
+        if (!GetWindowRect(handle, out var rect))
+        {
+            rectangle = Rectangle.Empty;
+            return false;
+        }
+
+        rectangle = rect.ToRectangle();
+        return true;
+    }
+
     public static bool MoveWindowToDirection(IntPtr handle, MoveDirection direction)
     {
         if (!TryGetWindowRectangle(handle, out var originalRect))
@@ -238,18 +250,6 @@ public static class WindowController
         {
             return string.Empty;
         }
-    }
-
-    private static bool TryGetWindowRectangle(IntPtr handle, out Rectangle rectangle)
-    {
-        if (!GetWindowRect(handle, out var rect))
-        {
-            rectangle = Rectangle.Empty;
-            return false;
-        }
-
-        rectangle = rect.ToRectangle();
-        return true;
     }
 
     [StructLayout(LayoutKind.Sequential)]

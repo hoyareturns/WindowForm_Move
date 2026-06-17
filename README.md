@@ -1,34 +1,35 @@
 # WindowForm_Move
 
-실행 중인 Windows 프로그램 창을 빠르게 다른 모니터 방향으로 이동하는 WinForms 유틸리티입니다.
+WindowForm_Move adds a small floating button strip near the title bar of the currently active Windows program.
 
-## 기능
+It does not inject code into other programs. Instead, it runs as a lightweight overlay that follows the active window and controls that window through the Windows API.
 
-- 목록에서 선택한 창을 좌, 우, 위, 아래 방향의 인접 모니터로 이동
-- 인접 모니터가 없으면 같은 가상 화면 안에서 80px씩 이동
-- `모든 창 일괄 적용` 체크 시 이동 가능한 모든 창에 같은 작업 적용
-- 최대화된 창은 자동으로 복원 후 이동하고 다시 최대화
-- 최소화, 최대화, 복원, 창닫기 지원
-- `항상 위` 옵션 지원
+## Features
 
-## 실행
+- Shows small buttons on the active window: left, right, up, down
+- Moves the active window to the nearest monitor in that direction
+- If there is no monitor in that direction, nudges the window inside the virtual desktop
+- Keeps maximized windows maximized after moving
+- `ALL` mode applies the direction move to all movable windows
+- Runs from the system tray
+- Tray menu supports show/hide, all-window mode, and exit
 
-개발 빌드:
+## Run
 
 ```powershell
 dotnet run
 ```
 
-이미 빌드된 실행 파일:
+Published executable:
 
 ```powershell
-.\bin\Debug\net6.0-windows\WindowForm_Move.exe
+.\bin\Release\net6.0-windows\win-x64\publish\WindowForm_Move.exe
 ```
 
-## 사용 팁
+## Usage
 
-1. 목록에서 창을 선택하고 방향 버튼을 누릅니다.
-2. 또는 이동할 다른 창을 한 번 클릭한 뒤 이 앱으로 돌아와 방향 버튼을 누릅니다.
-3. 여러 창을 한꺼번에 옮기려면 `모든 창 일괄 적용`을 체크합니다.
-
-`창닫기`는 각 프로그램에 정상 종료 요청을 보내는 방식입니다. 저장되지 않은 문서가 있으면 해당 프로그램의 확인 창이 뜰 수 있습니다.
+1. Start `WindowForm_Move`.
+2. Click any normal program window.
+3. Use the small overlay buttons near the top-right of that window.
+4. Turn on `ALL` to move all movable windows together.
+5. Use the tray icon menu to hide the buttons or exit the app.
