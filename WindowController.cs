@@ -32,7 +32,8 @@ public static class WindowController
     private const int SW_RESTORE = 9;
     private const int SW_MINIMIZE = 6;
     private const int SW_MAXIMIZE = 3;
-    private const int WM_CLOSE = 0x0010;
+    private const int WM_SYSCOMMAND = 0x0112;
+    private const int SC_CLOSE = 0xF060;
     private const int GW_OWNER = 4;
     private const int GWL_EXSTYLE = -20;
     private const int DWMWA_CLOAKED = 14;
@@ -267,7 +268,7 @@ public static class WindowController
 
     public static void CloseWindow(IntPtr handle)
     {
-        PostMessage(handle, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+        PostMessage(handle, WM_SYSCOMMAND, new IntPtr(SC_CLOSE), IntPtr.Zero);
     }
 
     public static void ToggleMaximizeWindow(IntPtr handle)

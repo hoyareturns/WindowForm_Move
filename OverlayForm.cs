@@ -45,7 +45,7 @@ public sealed class OverlayForm : Form
 
     public bool UpdatePosition(bool buttonsVisible)
     {
-        if (!buttonsVisible || WindowController.IsMinimized(TargetWindow) || !WindowController.IsMovableWindow(TargetWindow))
+        if (!buttonsVisible || !WindowController.IsMaximized(TargetWindow) || !WindowController.IsMovableWindow(TargetWindow))
         {
             Hide();
             return false;
