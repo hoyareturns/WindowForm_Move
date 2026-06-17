@@ -35,6 +35,7 @@ public static class WindowController
     private const int WM_CLOSE = 0x0010;
     private const int GW_OWNER = 4;
     private const int GWL_EXSTYLE = -20;
+    private const int DWMWA_CLOAKED = 14;
     private const long WS_EX_TOOLWINDOW = 0x00000080L;
     private const long WS_EX_APPWINDOW = 0x00040000L;
 
@@ -64,7 +65,7 @@ public static class WindowController
 
     public static bool IsMovableWindow(IntPtr handle)
     {
-        if (handle == IntPtr.Zero || handle == ShellWindow || !IsWindowVisible(handle))
+        if (handle == IntPtr.Zero || handle == ShellWindow || !IsWindowVisible(handle) || IsWindowCloaked(handle))
         {
             return false;
         }
@@ -79,6 +80,11 @@ public static class WindowController
             return false;
         }
 
+        if (IsExcludedWindowClass(handle))
+        {
+            return false;
+        }
+
         var title = GetWindowTitle(handle);
         if (string.IsNullOrWhiteSpace(title))
         {
@@ -86,6 +92,11 @@ public static class WindowController
         }
 
         if (!TryGetWindowRectangle(handle, out var rect) || rect.Width <= 0 || rect.Height <= 0)
+        {
+            return false;
+        }
+
+        if (!IsRectangleVisibleOnAnyScreen(rect))
         {
             return false;
         }
@@ -108,6 +119,31 @@ public static class WindowController
         }
 
         return true;
+    }
+
+    public static bool IsRectangleVisibleOnAnyScreen(Rectangle rect)
+    {
+        return Screen.AllScreens.Any(screen => Rectangle.Intersect(screen.Bounds, rect).Width > 0 &&
+                                               Rectangle.Intersect(screen.Bounds, rect).Height > 0);
+    }
+
+    private static bool IsWindowCloaked(IntPtr handle)
+    {
+        try
+        {
+            var result = DwmGetWindowAttribute(handle, DWMWA_CLOAKED, out var cloaked, sizeof(int));
+            return result == 0 && cloaked != 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsExcludedWindowClass(IntPtr handle)
+    {
+        var className = GetWindowClassName(handle);
+        return className is "Progman" or "WorkerW" or "Shell_TrayWnd" or "NotifyIconOverflowWindow" or "DV2ControlHost";
     }
 
     public static bool BelongsToCurrentProcess(IntPtr handle)
@@ -146,7 +182,10 @@ public static class WindowController
                 handle == ShellWindow ||
                 BelongsToCurrentProcess(handle) ||
                 !IsWindowVisible(handle) ||
-                IsIconic(handle))
+                IsIconic(handle) ||
+                IsWindowCloaked(handle) ||
+                !IsAppWindowCandidate(handle) ||
+                IsExcludedWindowClass(handle))
             {
                 return true;
             }
@@ -381,6 +420,13 @@ public static class WindowController
         }
     }
 
+    private static string GetWindowClassName(IntPtr handle)
+    {
+        var buffer = new char[256];
+        var copied = GetClassName(handle, buffer, buffer.Length);
+        return copied <= 0 ? string.Empty : new string(buffer, 0, copied);
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private readonly struct NativeRect
     {
@@ -435,6 +481,12 @@ public static class WindowController
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool PostMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int GetClassName(IntPtr hWnd, char[] lpClassName, int nMaxCount);
+
+    [DllImport("dwmapi.dll", PreserveSig = true)]
+    private static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);

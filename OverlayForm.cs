@@ -57,6 +57,12 @@ public sealed class OverlayForm : Form
             return false;
         }
 
+        if (targetRect.Width < Width + 16 || targetRect.Height < Height + 8)
+        {
+            Hide();
+            return false;
+        }
+
         var x = targetRect.Right - Width - 4;
         var y = targetRect.Top + 5;
 
@@ -66,6 +72,12 @@ public sealed class OverlayForm : Form
         }
 
         var overlayRect = new Rectangle(x, y, Width, Height);
+        if (!targetRect.Contains(overlayRect) || !WindowController.IsRectangleVisibleOnAnyScreen(overlayRect))
+        {
+            Hide();
+            return false;
+        }
+
         if (WindowController.IsCoveredByWindowInFront(TargetWindow, overlayRect))
         {
             Hide();
