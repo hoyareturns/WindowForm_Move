@@ -121,6 +121,11 @@ public static class WindowController
                 return true;
             }
 
+            if (string.IsNullOrWhiteSpace(GetWindowTitle(handle)))
+            {
+                return true;
+            }
+
             if (!TryGetWindowRectangle(handle, out var rect) || rect.Width <= 0 || rect.Height <= 0)
             {
                 return true;
@@ -198,25 +203,64 @@ public static class WindowController
 
     private static Screen? FindTargetScreen(Screen fromScreen, MoveDirection direction)
     {
-        var fromCenter = CenterOf(fromScreen.Bounds);
-        var candidates = Screen.AllScreens
+        var fromBounds = fromScreen.Bounds;
+        var candidate = Screen.AllScreens
             .Where(screen => screen.DeviceName != fromScreen.DeviceName)
-            .Select(screen => new { Screen = screen, Center = CenterOf(screen.Bounds) })
-            .Where(candidate => IsInDirection(fromCenter, candidate.Center, direction))
-            .OrderBy(candidate => DistanceSquared(fromCenter, candidate.Center))
-            .ToList();
+            .Select(screen => new
+            {
+                Screen = screen,
+                Score = GetDirectionalScore(fromBounds, screen.Bounds, direction)
+            })
+            .Where(candidate => candidate.Score is not null)
+            .OrderBy(candidate => candidate.Score!.Value.PrimaryDistance)
+            .ThenBy(candidate => candidate.Score!.Value.PerpendicularDistance)
+            .ThenBy(candidate => candidate.Score!.Value.CenterDistance)
+            .FirstOrDefault();
 
-        return candidates.FirstOrDefault()?.Screen;
+        return candidate?.Screen;
     }
 
-    private static bool IsInDirection(Point from, Point to, MoveDirection direction) => direction switch
+    private static DirectionalScore? GetDirectionalScore(Rectangle from, Rectangle to, MoveDirection direction)
     {
-        MoveDirection.Left => to.X < from.X,
-        MoveDirection.Right => to.X > from.X,
-        MoveDirection.Up => to.Y < from.Y,
-        MoveDirection.Down => to.Y > from.Y,
-        _ => false
-    };
+        var fromCenter = CenterOf(from);
+        var toCenter = CenterOf(to);
+
+        return direction switch
+        {
+            MoveDirection.Left when toCenter.X < fromCenter.X => new DirectionalScore(
+                Math.Max(0, from.Left - to.Right),
+                GetIntervalDistance(from.Top, from.Bottom, to.Top, to.Bottom),
+                DistanceSquared(fromCenter, toCenter)),
+            MoveDirection.Right when toCenter.X > fromCenter.X => new DirectionalScore(
+                Math.Max(0, to.Left - from.Right),
+                GetIntervalDistance(from.Top, from.Bottom, to.Top, to.Bottom),
+                DistanceSquared(fromCenter, toCenter)),
+            MoveDirection.Up when toCenter.Y < fromCenter.Y => new DirectionalScore(
+                Math.Max(0, from.Top - to.Bottom),
+                GetIntervalDistance(from.Left, from.Right, to.Left, to.Right),
+                DistanceSquared(fromCenter, toCenter)),
+            MoveDirection.Down when toCenter.Y > fromCenter.Y => new DirectionalScore(
+                Math.Max(0, to.Top - from.Bottom),
+                GetIntervalDistance(from.Left, from.Right, to.Left, to.Right),
+                DistanceSquared(fromCenter, toCenter)),
+            _ => null
+        };
+    }
+
+    private static int GetIntervalDistance(int firstStart, int firstEnd, int secondStart, int secondEnd)
+    {
+        if (firstEnd < secondStart)
+        {
+            return secondStart - firstEnd;
+        }
+
+        if (secondEnd < firstStart)
+        {
+            return firstStart - secondEnd;
+        }
+
+        return 0;
+    }
 
     private static Rectangle MapRectToScreen(Rectangle rect, Rectangle fromArea, Rectangle toArea)
     {
@@ -262,6 +306,8 @@ public static class WindowController
         var y = a.Y - b.Y;
         return (long)x * x + (long)y * y;
     }
+
+    private readonly record struct DirectionalScore(int PrimaryDistance, int PerpendicularDistance, long CenterDistance);
 
     private static string GetWindowTitle(IntPtr handle)
     {
