@@ -4,7 +4,6 @@ public sealed class OverlayForm : Form
 {
     private const int WS_EX_NOACTIVATE = 0x08000000;
     private const int WS_EX_TOOLWINDOW = 0x00000080;
-    private const int WS_EX_TOPMOST = 0x00000008;
 
     private readonly CheckBox _allCheck = new();
     private readonly Func<bool> _getMoveAllWindows;
@@ -20,7 +19,7 @@ public sealed class OverlayForm : Form
         get
         {
             var cp = base.CreateParams;
-            cp.ExStyle |= WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST;
+            cp.ExStyle |= WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW;
             return cp;
         }
     }
@@ -34,13 +33,19 @@ public sealed class OverlayForm : Form
 
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
-        TopMost = true;
+        TopMost = false;
         BackColor = Color.FromArgb(28, 28, 28);
         Opacity = 0.86;
         Size = new Size(196, 28);
         Padding = new Padding(2);
 
         BuildButtons();
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        WindowController.SetOwnerWindow(Handle, TargetWindow);
     }
 
     public bool UpdatePosition(bool buttonsVisible)
@@ -65,12 +70,7 @@ public sealed class OverlayForm : Form
             x = targetRect.Left + 12;
         }
 
-        SetBounds(x, y, Width, Height);
-
-        if (!Visible)
-        {
-            Show();
-        }
+        WindowController.SetOverlayBounds(Handle, x, y, Width, Height, Visible);
 
         SyncAllCheck();
         return true;
