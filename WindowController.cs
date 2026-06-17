@@ -88,6 +88,8 @@ public static class WindowController
         return processId == CurrentProcessId;
     }
 
+    public static bool IsMinimized(IntPtr handle) => IsIconic(handle);
+
     public static bool TryGetWindowRectangle(IntPtr handle, out Rectangle rectangle)
     {
         if (!GetWindowRect(handle, out var rect))

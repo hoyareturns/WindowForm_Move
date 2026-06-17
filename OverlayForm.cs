@@ -6,19 +6,12 @@ public sealed class OverlayForm : Form
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     private const int WS_EX_TOPMOST = 0x00000008;
 
-    private readonly System.Windows.Forms.Timer _timer = new();
     private readonly CheckBox _allCheck = new();
+    private readonly Func<bool> _getMoveAllWindows;
+    private readonly Action<bool> _setMoveAllWindows;
+    private readonly Action _exitRequested;
 
-    private IntPtr _targetWindow = IntPtr.Zero;
-    private bool _buttonsVisible = true;
-
-    public event EventHandler? ExitRequested;
-
-    public bool MoveAllWindows
-    {
-        get => _allCheck.Checked;
-        set => _allCheck.Checked = value;
-    }
+    public IntPtr TargetWindow { get; }
 
     protected override bool ShowWithoutActivation => true;
 
@@ -32,8 +25,13 @@ public sealed class OverlayForm : Form
         }
     }
 
-    public OverlayForm()
+    public OverlayForm(IntPtr targetWindow, Func<bool> getMoveAllWindows, Action<bool> setMoveAllWindows, Action exitRequested)
     {
+        TargetWindow = targetWindow;
+        _getMoveAllWindows = getMoveAllWindows;
+        _setMoveAllWindows = setMoveAllWindows;
+        _exitRequested = exitRequested;
+
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
         TopMost = true;
@@ -43,16 +41,49 @@ public sealed class OverlayForm : Form
         Padding = new Padding(2);
 
         BuildButtons();
-
-        _timer.Interval = 120;
-        _timer.Tick += (_, _) => FollowForegroundWindow();
-        _timer.Start();
     }
 
-    public void ToggleVisible()
+    public bool UpdatePosition(bool buttonsVisible)
     {
-        _buttonsVisible = !_buttonsVisible;
-        Visible = _buttonsVisible;
+        if (!buttonsVisible || WindowController.IsMinimized(TargetWindow) || !WindowController.IsMovableWindow(TargetWindow))
+        {
+            Hide();
+            return false;
+        }
+
+        if (!WindowController.TryGetWindowRectangle(TargetWindow, out var targetRect))
+        {
+            Hide();
+            return false;
+        }
+
+        var x = targetRect.Right - Width - 170;
+        var y = targetRect.Top + 5;
+
+        if (x < targetRect.Left + 12)
+        {
+            x = targetRect.Left + 12;
+        }
+
+        SetBounds(x, y, Width, Height);
+
+        if (!Visible)
+        {
+            Show();
+        }
+
+        SyncAllCheck();
+        return true;
+    }
+
+    public void SyncAllCheck()
+    {
+        if (_allCheck.Checked != _getMoveAllWindows())
+        {
+            _allCheck.CheckedChanged -= AllCheckChanged;
+            _allCheck.Checked = _getMoveAllWindows();
+            _allCheck.CheckedChanged += AllCheckChanged;
+        }
     }
 
     private void BuildButtons()
@@ -77,13 +108,19 @@ public sealed class OverlayForm : Form
         _allCheck.Size = new Size(46, 23);
         _allCheck.TextAlign = ContentAlignment.MiddleCenter;
         _allCheck.Margin = new Padding(2, 1, 0, 0);
+        _allCheck.CheckedChanged += AllCheckChanged;
         panel.Controls.Add(_allCheck);
 
         var closeButton = CreateFlatButton("x");
-        closeButton.Click += (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty);
+        closeButton.Click += (_, _) => _exitRequested();
         panel.Controls.Add(closeButton);
 
         Controls.Add(panel);
+    }
+
+    private void AllCheckChanged(object? sender, EventArgs e)
+    {
+        _setMoveAllWindows(_allCheck.Checked);
     }
 
     private Button CreateMoveButton(string text, MoveDirection direction)
@@ -112,45 +149,9 @@ public sealed class OverlayForm : Form
         return button;
     }
 
-    private void FollowForegroundWindow()
-    {
-        var foreground = WindowController.GetForegroundWindow();
-        if (foreground != IntPtr.Zero && !WindowController.BelongsToCurrentProcess(foreground))
-        {
-            _targetWindow = foreground;
-        }
-
-        if (!_buttonsVisible || _targetWindow == IntPtr.Zero || !WindowController.IsMovableWindow(_targetWindow))
-        {
-            Hide();
-            return;
-        }
-
-        if (!WindowController.TryGetWindowRectangle(_targetWindow, out var targetRect))
-        {
-            Hide();
-            return;
-        }
-
-        var x = targetRect.Right - Width - 170;
-        var y = targetRect.Top + 5;
-
-        if (x < targetRect.Left + 12)
-        {
-            x = targetRect.Left + 12;
-        }
-
-        SetBounds(x, y, Width, Height);
-
-        if (!Visible)
-        {
-            Show();
-        }
-    }
-
     private void MoveTargets(MoveDirection direction)
     {
-        var targets = MoveAllWindows
+        var targets = _getMoveAllWindows()
             ? WindowController.GetMovableWindows().Select(window => window.Handle).ToList()
             : GetSingleTarget();
 
@@ -162,8 +163,8 @@ public sealed class OverlayForm : Form
 
     private IReadOnlyList<IntPtr> GetSingleTarget()
     {
-        return _targetWindow != IntPtr.Zero && WindowController.IsMovableWindow(_targetWindow)
-            ? new[] { _targetWindow }
+        return TargetWindow != IntPtr.Zero && WindowController.IsMovableWindow(TargetWindow)
+            ? new[] { TargetWindow }
             : Array.Empty<IntPtr>();
     }
 }

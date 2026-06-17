@@ -1,13 +1,13 @@
 # WindowForm_Move
 
-WindowForm_Move adds a small floating button strip near the title bar of the currently active Windows program.
+WindowForm_Move adds a small floating button strip near the title bar of each normal running Windows program.
 
-It does not inject code into other programs. Instead, it runs as a lightweight overlay that follows the active window and controls that window through the Windows API.
+It does not inject code into other programs. Instead, it runs lightweight overlays that follow each window and control the target windows through the Windows API.
 
 ## Features
 
-- Shows small buttons on the active window: left, right, up, down
-- Moves the active window to the nearest monitor in that direction
+- Shows small buttons on each movable window: left, right, up, down
+- Moves the clicked button's target window to the nearest monitor in that direction
 - If there is no monitor in that direction, nudges the window inside the virtual desktop
 - Keeps maximized windows maximized after moving
 - `ALL` mode applies the direction move to all movable windows
@@ -29,7 +29,7 @@ Published executable:
 ## Usage
 
 1. Start `WindowForm_Move`.
-2. Click any normal program window.
-3. Use the small overlay buttons near the top-right of that window.
+2. Small buttons appear near the top-right of normal running windows.
+3. Use a window's own overlay buttons to move that window.
 4. Turn on `ALL` to move all movable windows together.
 5. Use the tray icon menu to hide the buttons or exit the app.
