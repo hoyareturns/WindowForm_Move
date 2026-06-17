@@ -33,6 +33,10 @@ public static class WindowController
     private const int SW_MINIMIZE = 6;
     private const int SW_MAXIMIZE = 3;
     private const int WM_CLOSE = 0x0010;
+    private const int GW_OWNER = 4;
+    private const int GWL_EXSTYLE = -20;
+    private const long WS_EX_TOOLWINDOW = 0x00000080L;
+    private const long WS_EX_APPWINDOW = 0x00040000L;
 
     private static readonly IntPtr ShellWindow = GetShellWindow();
     private static readonly int CurrentProcessId = Environment.ProcessId;
@@ -70,6 +74,11 @@ public static class WindowController
             return false;
         }
 
+        if (!IsAppWindowCandidate(handle))
+        {
+            return false;
+        }
+
         var title = GetWindowTitle(handle);
         if (string.IsNullOrWhiteSpace(title))
         {
@@ -77,6 +86,23 @@ public static class WindowController
         }
 
         if (!TryGetWindowRectangle(handle, out var rect) || rect.Width <= 0 || rect.Height <= 0)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool IsAppWindowCandidate(IntPtr handle)
+    {
+        var exStyle = GetWindowLongPtr(handle, GWL_EXSTYLE).ToInt64();
+        if ((exStyle & WS_EX_TOOLWINDOW) != 0)
+        {
+            return false;
+        }
+
+        var owner = GetWindow(handle, GW_OWNER);
+        if (owner != IntPtr.Zero && (exStyle & WS_EX_APPWINDOW) == 0)
         {
             return false;
         }
@@ -410,4 +436,19 @@ public static class WindowController
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool PostMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtr", SetLastError = true)]
+    private static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLong", SetLastError = true)]
+    private static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
+
+    private static IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex)
+    {
+        return IntPtr.Size == 8
+            ? GetWindowLongPtr64(hWnd, nIndex)
+            : new IntPtr(GetWindowLong32(hWnd, nIndex));
+    }
 }
