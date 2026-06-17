@@ -57,7 +57,7 @@ public sealed class OverlayForm : Form
             return false;
         }
 
-        var x = targetRect.Right - Width - 170;
+        var x = targetRect.Right - Width - 250;
         var y = targetRect.Top + 5;
 
         if (x < targetRect.Left + 12)
