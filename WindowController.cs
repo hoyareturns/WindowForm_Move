@@ -31,10 +31,6 @@ public static class WindowController
     private const int SW_MINIMIZE = 6;
     private const int SW_MAXIMIZE = 3;
     private const int WM_CLOSE = 0x0010;
-    private const int GWL_HWNDPARENT = -8;
-    private const uint SWP_NOZORDER = 0x0004;
-    private const uint SWP_NOACTIVATE = 0x0010;
-    private const uint SWP_SHOWWINDOW = 0x0040;
 
     private static readonly IntPtr ShellWindow = GetShellWindow();
     private static readonly int CurrentProcessId = Environment.ProcessId;
@@ -94,27 +90,6 @@ public static class WindowController
 
     public static bool IsMinimized(IntPtr handle) => IsIconic(handle);
 
-    public static void SetOwnerWindow(IntPtr overlayHandle, IntPtr ownerHandle)
-    {
-        if (overlayHandle == IntPtr.Zero || ownerHandle == IntPtr.Zero)
-        {
-            return;
-        }
-
-        SetWindowLongPtr(overlayHandle, GWL_HWNDPARENT, ownerHandle);
-    }
-
-    public static void SetOverlayBounds(IntPtr overlayHandle, int x, int y, int width, int height, bool isVisible)
-    {
-        var flags = SWP_NOZORDER | SWP_NOACTIVATE;
-        if (!isVisible)
-        {
-            flags |= SWP_SHOWWINDOW;
-        }
-
-        SetWindowPos(overlayHandle, IntPtr.Zero, x, y, width, height, flags);
-    }
-
     public static bool TryGetWindowRectangle(IntPtr handle, out Rectangle rectangle)
     {
         if (!GetWindowRect(handle, out var rect))
@@ -125,6 +100,42 @@ public static class WindowController
 
         rectangle = rect.ToRectangle();
         return true;
+    }
+
+    public static bool IsCoveredByWindowInFront(IntPtr targetHandle, Rectangle overlayRect)
+    {
+        var covered = false;
+        EnumWindows((handle, _) =>
+        {
+            if (handle == targetHandle)
+            {
+                return false;
+            }
+
+            if (handle == IntPtr.Zero ||
+                handle == ShellWindow ||
+                BelongsToCurrentProcess(handle) ||
+                !IsWindowVisible(handle) ||
+                IsIconic(handle))
+            {
+                return true;
+            }
+
+            if (!TryGetWindowRectangle(handle, out var rect) || rect.Width <= 0 || rect.Height <= 0)
+            {
+                return true;
+            }
+
+            if (rect.IntersectsWith(overlayRect))
+            {
+                covered = true;
+                return false;
+            }
+
+            return true;
+        }, IntPtr.Zero);
+
+        return covered;
     }
 
     public static bool MoveWindowToDirection(IntPtr handle, MoveDirection direction)
@@ -334,26 +345,4 @@ public static class WindowController
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool PostMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
-    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr", SetLastError = true)]
-    private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
-
-    [DllImport("user32.dll", EntryPoint = "SetWindowLong", SetLastError = true)]
-    private static extern int SetWindowLong32(IntPtr hWnd, int nIndex, int dwNewLong);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetWindowPos(
-        IntPtr hWnd,
-        IntPtr hWndInsertAfter,
-        int x,
-        int y,
-        int cx,
-        int cy,
-        uint uFlags);
-
-    private static IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong)
-    {
-        return IntPtr.Size == 8
-            ? SetWindowLongPtr64(hWnd, nIndex, dwNewLong)
-            : new IntPtr(SetWindowLong32(hWnd, nIndex, dwNewLong.ToInt32()));
-    }
 }
