@@ -7,6 +7,8 @@ public enum MoveDirection
 {
     Left,
     Right,
+    UpLeft,
+    UpRight,
     Up,
     Down
 }
@@ -89,6 +91,8 @@ public static class WindowController
     }
 
     public static bool IsMinimized(IntPtr handle) => IsIconic(handle);
+
+    public static bool IsMaximized(IntPtr handle) => IsZoomed(handle);
 
     public static bool TryGetWindowRectangle(IntPtr handle, out Rectangle rectangle)
     {
@@ -201,6 +205,11 @@ public static class WindowController
         PostMessage(handle, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
     }
 
+    public static void ToggleMaximizeWindow(IntPtr handle)
+    {
+        ShowWindow(handle, IsZoomed(handle) ? SW_RESTORE : SW_MAXIMIZE);
+    }
+
     private static Screen? FindTargetScreen(Screen fromScreen, MoveDirection direction)
     {
         var fromBounds = fromScreen.Bounds;
@@ -238,6 +247,14 @@ public static class WindowController
             MoveDirection.Up when toCenter.Y < fromCenter.Y => new DirectionalScore(
                 Math.Max(0, from.Top - to.Bottom),
                 GetIntervalDistance(from.Left, from.Right, to.Left, to.Right),
+                DistanceSquared(fromCenter, toCenter)),
+            MoveDirection.UpLeft when toCenter.Y < fromCenter.Y && toCenter.X <= fromCenter.X => new DirectionalScore(
+                Math.Max(0, from.Top - to.Bottom),
+                Math.Max(0, fromCenter.X - toCenter.X),
+                DistanceSquared(fromCenter, toCenter)),
+            MoveDirection.UpRight when toCenter.Y < fromCenter.Y && toCenter.X >= fromCenter.X => new DirectionalScore(
+                Math.Max(0, from.Top - to.Bottom),
+                Math.Max(0, toCenter.X - fromCenter.X),
                 DistanceSquared(fromCenter, toCenter)),
             MoveDirection.Down when toCenter.Y > fromCenter.Y => new DirectionalScore(
                 Math.Max(0, to.Top - from.Bottom),
@@ -286,6 +303,8 @@ public static class WindowController
             MoveDirection.Left => rect with { X = rect.X - step },
             MoveDirection.Right => rect with { X = rect.X + step },
             MoveDirection.Up => rect with { Y = rect.Y - step },
+            MoveDirection.UpLeft => rect with { X = rect.X - step, Y = rect.Y - step },
+            MoveDirection.UpRight => rect with { X = rect.X + step, Y = rect.Y - step },
             MoveDirection.Down => rect with { Y = rect.Y + step },
             _ => rect
         };

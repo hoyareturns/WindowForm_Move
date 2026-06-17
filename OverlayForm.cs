@@ -37,7 +37,7 @@ public sealed class OverlayForm : Form
         TopMost = true;
         BackColor = Color.FromArgb(28, 28, 28);
         Opacity = 0.86;
-        Size = new Size(196, 28);
+        Size = new Size(328, 28);
         Padding = new Padding(2);
 
         BuildButtons();
@@ -57,7 +57,7 @@ public sealed class OverlayForm : Form
             return false;
         }
 
-        var x = targetRect.Right - Width - 250;
+        var x = targetRect.Right - Width - 4;
         var y = targetRect.Top + 5;
 
         if (x < targetRect.Left + 12)
@@ -104,10 +104,11 @@ public sealed class OverlayForm : Form
             Padding = Padding.Empty
         };
 
-        panel.Controls.Add(CreateMoveButton("<", MoveDirection.Left));
-        panel.Controls.Add(CreateMoveButton(">", MoveDirection.Right));
-        panel.Controls.Add(CreateMoveButton("^", MoveDirection.Up));
-        panel.Controls.Add(CreateMoveButton("v", MoveDirection.Down));
+        panel.Controls.Add(CreateMoveButton("←", MoveDirection.Left));
+        panel.Controls.Add(CreateMoveButton("→", MoveDirection.Right));
+        panel.Controls.Add(CreateMoveButton("↖", MoveDirection.UpLeft));
+        panel.Controls.Add(CreateMoveButton("↗", MoveDirection.UpRight));
+        panel.Controls.Add(CreateMoveButton("↓", MoveDirection.Down));
 
         _allCheck.Text = "ALL";
         _allCheck.ForeColor = Color.White;
@@ -118,9 +119,15 @@ public sealed class OverlayForm : Form
         _allCheck.CheckedChanged += AllCheckChanged;
         panel.Controls.Add(_allCheck);
 
-        var closeButton = CreateFlatButton("x");
-        closeButton.Click += (_, _) => _exitRequested();
+        panel.Controls.Add(CreateWindowActionButton("_", () => WindowController.ApplyAction(TargetWindow, WindowAction.Minimize)));
+        panel.Controls.Add(CreateWindowActionButton("□", () => WindowController.ToggleMaximizeWindow(TargetWindow)));
+
+        var closeButton = CreateWindowActionButton("x", () => WindowController.CloseWindow(TargetWindow));
         panel.Controls.Add(closeButton);
+
+        var appExitButton = CreateFlatButton("APP", 34);
+        appExitButton.Click += (_, _) => _exitRequested();
+        panel.Controls.Add(appExitButton);
 
         Controls.Add(panel);
     }
@@ -137,12 +144,25 @@ public sealed class OverlayForm : Form
         return button;
     }
 
-    private static Button CreateFlatButton(string text)
+    private Button CreateWindowActionButton(string text, Action action)
+    {
+        var button = CreateFlatButton(text);
+        button.Click += (_, _) =>
+        {
+            if (TargetWindow != IntPtr.Zero && WindowController.IsMovableWindow(TargetWindow))
+            {
+                action();
+            }
+        };
+        return button;
+    }
+
+    private static Button CreateFlatButton(string text, int width = 26)
     {
         var button = new Button
         {
             Text = text,
-            Size = new Size(26, 23),
+            Size = new Size(width, 23),
             Margin = new Padding(1),
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.FromArgb(45, 45, 45),
