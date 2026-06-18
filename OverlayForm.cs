@@ -116,11 +116,11 @@ public sealed class OverlayForm : Form
             Padding = Padding.Empty
         };
 
-        panel.Controls.Add(CreateMoveButton("←", MoveDirection.Left));
-        panel.Controls.Add(CreateMoveButton("→", MoveDirection.Right));
-        panel.Controls.Add(CreateMoveButton("↖", MoveDirection.UpLeft));
-        panel.Controls.Add(CreateMoveButton("↗", MoveDirection.UpRight));
-        panel.Controls.Add(CreateMoveButton("↓", MoveDirection.Down));
+        panel.Controls.Add(CreateMoveButton(WindowControlIcon.ArrowLeft, MoveDirection.Left));
+        panel.Controls.Add(CreateMoveButton(WindowControlIcon.ArrowRight, MoveDirection.Right));
+        panel.Controls.Add(CreateMoveButton(WindowControlIcon.ArrowUpLeft, MoveDirection.UpLeft));
+        panel.Controls.Add(CreateMoveButton(WindowControlIcon.ArrowUpRight, MoveDirection.UpRight));
+        panel.Controls.Add(CreateMoveButton(WindowControlIcon.ArrowDown, MoveDirection.Down));
 
         panel.Controls.Add(CreateHalfButton(WindowControlIcon.HalfLeft, WindowHalf.Left));
         panel.Controls.Add(CreateHalfButton(WindowControlIcon.HalfRight, WindowHalf.Right));
@@ -162,10 +162,9 @@ public sealed class OverlayForm : Form
         _setMoveAllWindows(_allCheck.Checked);
     }
 
-    private Button CreateMoveButton(string text, MoveDirection direction)
+    private Button CreateMoveButton(WindowControlIcon icon, MoveDirection direction)
     {
-        var button = CreateFlatButton(text);
-        button.Click += (_, _) => MoveTargets(direction);
+        var button = CreateWindowIconButton(icon, () => MoveTargets(direction), false);
         return button;
     }
 
@@ -213,8 +212,14 @@ public sealed class OverlayForm : Form
 
     private static void DrawWindowControlIcon(Graphics graphics, Rectangle bounds, WindowControlIcon icon)
     {
-        graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-        using var pen = new Pen(Color.White, icon == WindowControlIcon.Close ? 2.2F : 2F);
+        graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None;
+        graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
+        using var pen = new Pen(Color.White, 2F)
+        {
+            StartCap = System.Drawing.Drawing2D.LineCap.Square,
+            EndCap = System.Drawing.Drawing2D.LineCap.Square,
+            LineJoin = System.Drawing.Drawing2D.LineJoin.Miter
+        };
 
         switch (icon)
         {
@@ -228,11 +233,51 @@ public sealed class OverlayForm : Form
                 graphics.DrawLine(pen, 8, 6, bounds.Width - 8, 17);
                 graphics.DrawLine(pen, bounds.Width - 8, 6, 8, 17);
                 break;
+            case WindowControlIcon.ArrowLeft:
+            case WindowControlIcon.ArrowRight:
+            case WindowControlIcon.ArrowUpLeft:
+            case WindowControlIcon.ArrowUpRight:
+            case WindowControlIcon.ArrowDown:
+                DrawArrowIcon(graphics, bounds, pen, icon);
+                break;
             case WindowControlIcon.HalfLeft:
             case WindowControlIcon.HalfRight:
             case WindowControlIcon.HalfTop:
             case WindowControlIcon.HalfBottom:
                 DrawHalfIcon(graphics, bounds, pen, icon);
+                break;
+        }
+    }
+
+    private static void DrawArrowIcon(Graphics graphics, Rectangle bounds, Pen pen, WindowControlIcon icon)
+    {
+        var centerX = bounds.Width / 2;
+        switch (icon)
+        {
+            case WindowControlIcon.ArrowLeft:
+                graphics.DrawLine(pen, 7, 11, bounds.Width - 7, 11);
+                graphics.DrawLine(pen, 7, 11, 11, 7);
+                graphics.DrawLine(pen, 7, 11, 11, 15);
+                break;
+            case WindowControlIcon.ArrowRight:
+                graphics.DrawLine(pen, 7, 11, bounds.Width - 7, 11);
+                graphics.DrawLine(pen, bounds.Width - 7, 11, bounds.Width - 11, 7);
+                graphics.DrawLine(pen, bounds.Width - 7, 11, bounds.Width - 11, 15);
+                break;
+            case WindowControlIcon.ArrowUpLeft:
+                graphics.DrawLine(pen, 8, 6, bounds.Width - 8, 16);
+                graphics.DrawLine(pen, 8, 6, 8, 11);
+                graphics.DrawLine(pen, 8, 6, 13, 6);
+                break;
+            case WindowControlIcon.ArrowUpRight:
+                graphics.DrawLine(pen, bounds.Width - 8, 6, 8, 16);
+                graphics.DrawLine(pen, bounds.Width - 8, 6, bounds.Width - 8, 11);
+                graphics.DrawLine(pen, bounds.Width - 8, 6, bounds.Width - 13, 6);
+                break;
+            case WindowControlIcon.ArrowDown:
+                graphics.DrawLine(pen, centerX, 6, centerX, 16);
+                graphics.DrawLine(pen, centerX, 16, centerX - 4, 12);
+                graphics.DrawLine(pen, centerX, 16, centerX + 4, 12);
                 break;
         }
     }
@@ -263,7 +308,12 @@ public sealed class OverlayForm : Form
         HalfLeft,
         HalfRight,
         HalfTop,
-        HalfBottom
+        HalfBottom,
+        ArrowLeft,
+        ArrowRight,
+        ArrowUpLeft,
+        ArrowUpRight,
+        ArrowDown
     }
 
     private void MoveTargets(MoveDirection direction)
