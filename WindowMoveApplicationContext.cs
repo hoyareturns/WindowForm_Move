@@ -93,7 +93,6 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
                     ToggleMoveAllWindows,
                     () => _crosshairEnabled,
                     ToggleCrosshair,
-                    (handle, query) => WindowController.FindTextInWindow(handle, query),
                     ExitThread);
             }
         }
