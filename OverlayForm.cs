@@ -7,9 +7,11 @@ public sealed class OverlayForm : Form
     private const int WS_EX_TOPMOST = 0x00000008;
 
     private readonly Func<bool> _getMoveAllWindows;
+    private readonly Action _toggleMoveAllWindows;
     private readonly Func<bool> _getCrosshairEnabled;
     private readonly Action _toggleCrosshair;
     private readonly Action _exitRequested;
+    private Button? _allButton;
     private Button? _crosshairButton;
 
     public IntPtr TargetWindow { get; }
@@ -29,12 +31,14 @@ public sealed class OverlayForm : Form
     public OverlayForm(
         IntPtr targetWindow,
         Func<bool> getMoveAllWindows,
+        Action toggleMoveAllWindows,
         Func<bool> getCrosshairEnabled,
         Action toggleCrosshair,
         Action exitRequested)
     {
         TargetWindow = targetWindow;
         _getMoveAllWindows = getMoveAllWindows;
+        _toggleMoveAllWindows = toggleMoveAllWindows;
         _getCrosshairEnabled = getCrosshairEnabled;
         _toggleCrosshair = toggleCrosshair;
         _exitRequested = exitRequested;
@@ -44,7 +48,7 @@ public sealed class OverlayForm : Form
         TopMost = true;
         BackColor = Color.FromArgb(28, 28, 28);
         Opacity = 1.0;
-        Size = new Size(404, 28);
+        Size = new Size(440, 28);
         Padding = new Padding(2);
 
         BuildButtons();
@@ -98,21 +102,27 @@ public sealed class OverlayForm : Form
             Show();
         }
 
-        SyncCrosshairState();
+        SyncToggleStates();
         return true;
     }
 
-    public void SyncCrosshairState()
+    public void SyncToggleStates()
     {
-        if (_crosshairButton is null)
+        if (_allButton is not null)
         {
-            return;
+            _allButton.BackColor = _getMoveAllWindows()
+                ? Color.FromArgb(0, 105, 145)
+                : Color.FromArgb(45, 45, 45);
+            _allButton.Invalidate();
         }
 
-        _crosshairButton.BackColor = _getCrosshairEnabled()
-            ? Color.FromArgb(0, 105, 145)
-            : Color.FromArgb(45, 45, 45);
-        _crosshairButton.Invalidate();
+        if (_crosshairButton is not null)
+        {
+            _crosshairButton.BackColor = _getCrosshairEnabled()
+                ? Color.FromArgb(0, 105, 145)
+                : Color.FromArgb(45, 45, 45);
+            _crosshairButton.Invalidate();
+        }
     }
 
     private void BuildButtons()
@@ -142,6 +152,11 @@ public sealed class OverlayForm : Form
 
         var appExitButton = CreateWindowIconButton(WindowControlIcon.Close, _exitRequested, false);
         panel.Controls.Add(appExitButton);
+
+        _allButton = CreateFlatButton("ALL", 34);
+        _allButton.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
+        _allButton.Click += (_, _) => _toggleMoveAllWindows();
+        panel.Controls.Add(_allButton);
 
         var minimizeButton = CreateWindowIconButton(
             WindowControlIcon.Minimize,

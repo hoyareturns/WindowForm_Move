@@ -12,7 +12,7 @@ It does not inject code into other programs. Instead, it runs lightweight overla
 - If there is no monitor in that direction, nudges the window inside the virtual desktop
 - Keeps maximized windows maximized after moving
 - Provides a click-through crosshair guide that follows the mouse across the current monitor
-- The tray menu's `Move all windows` mode applies monitor moves to all movable windows
+- The compact `ALL` button or tray menu applies monitor moves to all movable windows
 - Runs from the system tray
 - Tray menu supports show/hide, all-window mode, crosshair guide, and exit
 
@@ -34,5 +34,5 @@ Published executable:
 2. Small buttons appear near the top-right of normal running windows.
 3. Use a window's own overlay buttons to move that window.
 4. Use the crosshair button to toggle the mouse guide.
-5. Turn on `Move all windows` from the tray menu when needed.
+5. Turn on `ALL` from the button strip or `Move all windows` from the tray menu when needed.
 6. Use the tray icon menu to hide the buttons or exit the app.

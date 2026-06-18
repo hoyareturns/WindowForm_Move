@@ -60,7 +60,7 @@ public sealed class CrosshairOverlayForm : Form
         var cursor = PointToClient(Cursor.Position);
         e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None;
         e.Graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
-        using var pen = new Pen(Color.FromArgb(90, 200, 255), 2F);
+        using var pen = new Pen(Color.FromArgb(90, 200, 255), 1F);
         e.Graphics.DrawLine(pen, 0, cursor.Y, ClientSize.Width, cursor.Y);
         e.Graphics.DrawLine(pen, cursor.X, 0, cursor.X, ClientSize.Height);
     }
