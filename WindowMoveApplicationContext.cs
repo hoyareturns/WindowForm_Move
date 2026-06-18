@@ -4,9 +4,12 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
 {
     private readonly Dictionary<IntPtr, OverlayForm> _overlays = new();
     private readonly System.Windows.Forms.Timer _scanTimer = new();
+    private readonly CrosshairOverlayForm _crosshairOverlay = new();
     private readonly NotifyIcon _notifyIcon;
+    private ToolStripMenuItem? _crosshairMenuItem;
     private bool _buttonsVisible = true;
     private bool _moveAllWindows;
+    private bool _crosshairEnabled;
 
     public WindowMoveApplicationContext()
     {
@@ -33,6 +36,7 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
             _notifyIcon.Visible = false;
             _notifyIcon.Dispose();
             _scanTimer.Dispose();
+            _crosshairOverlay.Dispose();
             foreach (var overlay in _overlays.Values)
             {
                 overlay.Dispose();
@@ -55,6 +59,13 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
         allItem.CheckedChanged += (_, _) => SetMoveAllWindows(allItem.Checked);
         menu.Items.Add(allItem);
 
+        _crosshairMenuItem = new ToolStripMenuItem("Crosshair guide")
+        {
+            CheckOnClick = true
+        };
+        _crosshairMenuItem.CheckedChanged += (_, _) => SetCrosshairEnabled(_crosshairMenuItem.Checked);
+        menu.Items.Add(_crosshairMenuItem);
+
         menu.Items.Add(new ToolStripSeparator());
 
         var exitItem = new ToolStripMenuItem("Exit");
@@ -76,7 +87,8 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
                 _overlays[window.Handle] = new OverlayForm(
                     window.Handle,
                     () => _moveAllWindows,
-                    SetMoveAllWindows,
+                    () => _crosshairEnabled,
+                    ToggleCrosshair,
                     ExitThread);
             }
         }
@@ -105,9 +117,26 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
     private void SetMoveAllWindows(bool enabled)
     {
         _moveAllWindows = enabled;
+    }
+
+    private void ToggleCrosshair()
+    {
+        SetCrosshairEnabled(!_crosshairEnabled);
+    }
+
+    private void SetCrosshairEnabled(bool enabled)
+    {
+        _crosshairEnabled = enabled;
+        _crosshairOverlay.SetEnabled(enabled);
+
+        if (_crosshairMenuItem is not null && _crosshairMenuItem.Checked != enabled)
+        {
+            _crosshairMenuItem.Checked = enabled;
+        }
+
         foreach (var overlay in _overlays.Values)
         {
-            overlay.SyncAllCheck();
+            overlay.SyncCrosshairState();
         }
     }
 }

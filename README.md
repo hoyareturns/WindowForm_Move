@@ -6,13 +6,15 @@ It does not inject code into other programs. Instead, it runs lightweight overla
 
 ## Features
 
-- Shows small buttons on each movable window: left, right, up, down
+- Shows controls on maximized and half-screen windows
 - Moves the clicked button's target window to the nearest monitor in that direction
+- Places a window on the left, right, top, or bottom half of its current monitor
 - If there is no monitor in that direction, nudges the window inside the virtual desktop
 - Keeps maximized windows maximized after moving
-- `ALL` mode applies the direction move to all movable windows
+- Provides a click-through crosshair guide that follows the mouse across the current monitor
+- The tray menu's `Move all windows` mode applies monitor moves to all movable windows
 - Runs from the system tray
-- Tray menu supports show/hide, all-window mode, and exit
+- Tray menu supports show/hide, all-window mode, crosshair guide, and exit
 
 ## Run
 
@@ -31,5 +33,6 @@ Published executable:
 1. Start `WindowForm_Move`.
 2. Small buttons appear near the top-right of normal running windows.
 3. Use a window's own overlay buttons to move that window.
-4. Turn on `ALL` to move all movable windows together.
-5. Use the tray icon menu to hide the buttons or exit the app.
+4. Use the crosshair button to toggle the mouse guide.
+5. Turn on `Move all windows` from the tray menu when needed.
+6. Use the tray icon menu to hide the buttons or exit the app.

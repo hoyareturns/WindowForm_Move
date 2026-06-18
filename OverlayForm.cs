@@ -6,10 +6,11 @@ public sealed class OverlayForm : Form
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     private const int WS_EX_TOPMOST = 0x00000008;
 
-    private readonly CheckBox _allCheck = new();
     private readonly Func<bool> _getMoveAllWindows;
-    private readonly Action<bool> _setMoveAllWindows;
+    private readonly Func<bool> _getCrosshairEnabled;
+    private readonly Action _toggleCrosshair;
     private readonly Action _exitRequested;
+    private Button? _crosshairButton;
 
     public IntPtr TargetWindow { get; }
 
@@ -25,11 +26,17 @@ public sealed class OverlayForm : Form
         }
     }
 
-    public OverlayForm(IntPtr targetWindow, Func<bool> getMoveAllWindows, Action<bool> setMoveAllWindows, Action exitRequested)
+    public OverlayForm(
+        IntPtr targetWindow,
+        Func<bool> getMoveAllWindows,
+        Func<bool> getCrosshairEnabled,
+        Action toggleCrosshair,
+        Action exitRequested)
     {
         TargetWindow = targetWindow;
         _getMoveAllWindows = getMoveAllWindows;
-        _setMoveAllWindows = setMoveAllWindows;
+        _getCrosshairEnabled = getCrosshairEnabled;
+        _toggleCrosshair = toggleCrosshair;
         _exitRequested = exitRequested;
 
         FormBorderStyle = FormBorderStyle.None;
@@ -37,7 +44,7 @@ public sealed class OverlayForm : Form
         TopMost = true;
         BackColor = Color.FromArgb(28, 28, 28);
         Opacity = 1.0;
-        Size = new Size(424, 28);
+        Size = new Size(404, 28);
         Padding = new Padding(2);
 
         BuildButtons();
@@ -91,18 +98,21 @@ public sealed class OverlayForm : Form
             Show();
         }
 
-        SyncAllCheck();
+        SyncCrosshairState();
         return true;
     }
 
-    public void SyncAllCheck()
+    public void SyncCrosshairState()
     {
-        if (_allCheck.Checked != _getMoveAllWindows())
+        if (_crosshairButton is null)
         {
-            _allCheck.CheckedChanged -= AllCheckChanged;
-            _allCheck.Checked = _getMoveAllWindows();
-            _allCheck.CheckedChanged += AllCheckChanged;
+            return;
         }
+
+        _crosshairButton.BackColor = _getCrosshairEnabled()
+            ? Color.FromArgb(0, 105, 145)
+            : Color.FromArgb(45, 45, 45);
+        _crosshairButton.Invalidate();
     }
 
     private void BuildButtons()
@@ -127,17 +137,11 @@ public sealed class OverlayForm : Form
         panel.Controls.Add(CreateHalfButton(WindowControlIcon.HalfTop, WindowHalf.Top));
         panel.Controls.Add(CreateHalfButton(WindowControlIcon.HalfBottom, WindowHalf.Bottom));
 
+        _crosshairButton = CreateWindowIconButton(WindowControlIcon.Crosshair, _toggleCrosshair, false);
+        panel.Controls.Add(_crosshairButton);
+
         var appExitButton = CreateWindowIconButton(WindowControlIcon.Close, _exitRequested, false);
         panel.Controls.Add(appExitButton);
-
-        _allCheck.Text = "ALL";
-        _allCheck.ForeColor = Color.White;
-        _allCheck.AutoSize = false;
-        _allCheck.Size = new Size(46, 23);
-        _allCheck.TextAlign = ContentAlignment.MiddleCenter;
-        _allCheck.Margin = new Padding(2, 1, 0, 0);
-        _allCheck.CheckedChanged += AllCheckChanged;
-        panel.Controls.Add(_allCheck);
 
         var minimizeButton = CreateWindowIconButton(
             WindowControlIcon.Minimize,
@@ -155,11 +159,6 @@ public sealed class OverlayForm : Form
         panel.Controls.Add(closeButton);
 
         Controls.Add(panel);
-    }
-
-    private void AllCheckChanged(object? sender, EventArgs e)
-    {
-        _setMoveAllWindows(_allCheck.Checked);
     }
 
     private Button CreateMoveButton(WindowControlIcon icon, MoveDirection direction)
@@ -240,6 +239,10 @@ public sealed class OverlayForm : Form
             case WindowControlIcon.ArrowDown:
                 DrawArrowIcon(graphics, bounds, pen, icon);
                 break;
+            case WindowControlIcon.Crosshair:
+                graphics.DrawLine(pen, bounds.Width / 2, 5, bounds.Width / 2, 18);
+                graphics.DrawLine(pen, 6, 11, bounds.Width - 6, 11);
+                break;
             case WindowControlIcon.HalfLeft:
             case WindowControlIcon.HalfRight:
             case WindowControlIcon.HalfTop:
@@ -313,7 +316,8 @@ public sealed class OverlayForm : Form
         ArrowRight,
         ArrowUpLeft,
         ArrowUpRight,
-        ArrowDown
+        ArrowDown,
+        Crosshair
     }
 
     private void MoveTargets(MoveDirection direction)
