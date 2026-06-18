@@ -123,6 +123,7 @@ public sealed class OverlayForm : Form
         panel.Controls.Add(CreateMoveButton("↓", MoveDirection.Down));
 
         var appExitButton = CreateFlatButton("X");
+        ApplyWindowControlFont(appExitButton, 11F);
         appExitButton.Click += (_, _) => _exitRequested();
         panel.Controls.Add(appExitButton);
 
@@ -135,10 +136,16 @@ public sealed class OverlayForm : Form
         _allCheck.CheckedChanged += AllCheckChanged;
         panel.Controls.Add(_allCheck);
 
-        panel.Controls.Add(CreateWindowActionButton("_", () => WindowController.ApplyAction(TargetWindow, WindowAction.Minimize)));
-        panel.Controls.Add(CreateWindowActionButton("□", () => WindowController.ToggleMaximizeWindow(TargetWindow)));
+        var minimizeButton = CreateWindowActionButton("━", () => WindowController.ApplyAction(TargetWindow, WindowAction.Minimize));
+        ApplyWindowControlFont(minimizeButton, 12F);
+        panel.Controls.Add(minimizeButton);
 
-        var closeButton = CreateWindowActionButton("x", () => WindowController.CloseWindow(TargetWindow));
+        var maximizeButton = CreateWindowActionButton("□", () => WindowController.ToggleMaximizeWindow(TargetWindow));
+        ApplyWindowControlFont(maximizeButton, 13F);
+        panel.Controls.Add(maximizeButton);
+
+        var closeButton = CreateWindowActionButton("X", () => WindowController.CloseWindow(TargetWindow));
+        ApplyWindowControlFont(closeButton, 11F);
         panel.Controls.Add(closeButton);
 
         Controls.Add(panel);
@@ -186,6 +193,11 @@ public sealed class OverlayForm : Form
         button.FlatAppearance.MouseOverBackColor = Color.FromArgb(70, 70, 70);
         button.FlatAppearance.MouseDownBackColor = Color.FromArgb(90, 90, 90);
         return button;
+    }
+
+    private static void ApplyWindowControlFont(Button button, float size)
+    {
+        button.Font = new Font("Segoe UI Symbol", size, FontStyle.Bold);
     }
 
     private void MoveTargets(MoveDirection direction)
