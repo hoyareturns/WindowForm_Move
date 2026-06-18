@@ -9,6 +9,9 @@ It does not inject code into other programs. Instead, it runs lightweight overla
 - Shows controls on maximized and half-screen windows
 - Moves the clicked button's target window to the nearest monitor in that direction
 - Places a window on the left, right, top, or bottom half of its current monitor
+- Saves named multi-window layouts and restores or deletes them from the button strip
+- Optionally launches missing programs before restoring a saved layout
+- Restores only matching windows; unmatched or login-required windows are left untouched
 - If there is no monitor in that direction, nudges the window inside the virtual desktop
 - Keeps maximized windows maximized after moving
 - Provides a click-through crosshair guide that follows the mouse across the current monitor
@@ -34,5 +37,7 @@ Published executable:
 2. Small buttons appear near the top-right of normal running windows.
 3. Use a window's own overlay buttons to move that window.
 4. Use the crosshair button to toggle the mouse guide.
-5. Turn on `ALL` from the button strip or `Move all windows` from the tray menu when needed.
-6. Use the tray icon menu to hide the buttons or exit the app.
+5. Type a layout name, then use the save, load, or delete icon beside the layout list.
+6. Turn on `RUN` before loading when missing programs should be launched automatically.
+7. Turn on `ALL` from the button strip or `Move all windows` from the tray menu when needed.
+8. Use the tray icon menu to hide the buttons or exit the app.

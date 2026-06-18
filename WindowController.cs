@@ -55,6 +55,168 @@ public static class WindowController
 
     public static IntPtr GetForegroundWindow() => NativeGetForegroundWindow();
 
+    public static void ActivateWindow(IntPtr handle)
+    {
+        if (handle != IntPtr.Zero)
+        {
+            SetForegroundWindow(handle);
+        }
+    }
+
+    public static IReadOnlyList<WindowLayoutEntry> CaptureWindowLayout()
+    {
+        var result = new List<WindowLayoutEntry>();
+        foreach (var window in GetMovableWindows())
+        {
+            if (!TryGetWindowRectangle(window.Handle, out var bounds))
+            {
+                continue;
+            }
+
+            var screen = Screen.FromHandle(window.Handle);
+            if (IsZoomed(window.Handle))
+            {
+                bounds = screen.WorkingArea;
+            }
+
+            result.Add(new WindowLayoutEntry(
+                window.ProcessName,
+                window.Title,
+                bounds.X,
+                bounds.Y,
+                bounds.Width,
+                bounds.Height,
+                IsZoomed(window.Handle),
+                screen.DeviceName,
+                screen.WorkingArea.X,
+                screen.WorkingArea.Y,
+                screen.WorkingArea.Width,
+                screen.WorkingArea.Height,
+                GetProcessPath(window.Handle)));
+        }
+
+        return result;
+    }
+
+    public static int RestoreWindowLayout(
+        IReadOnlyList<WindowLayoutEntry> entries,
+        bool launchMissingPrograms)
+    {
+        var available = GetMovableWindows().ToList();
+        var usedHandles = new HashSet<IntPtr>();
+        var missing = new List<WindowLayoutEntry>();
+        var restored = RestoreAvailableEntries(entries, available, usedHandles, missing);
+
+        if (!launchMissingPrograms || missing.Count == 0)
+        {
+            return restored;
+        }
+
+        var launchedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in missing)
+        {
+            if (string.IsNullOrWhiteSpace(entry.ExecutablePath) ||
+                !File.Exists(entry.ExecutablePath) ||
+                !launchedPaths.Add(entry.ExecutablePath))
+            {
+                continue;
+            }
+
+            try
+            {
+                Process.Start(new ProcessStartInfo(entry.ExecutablePath)
+                {
+                    UseShellExecute = true
+                });
+            }
+            catch
+            {
+                // A protected or unavailable executable is skipped.
+            }
+        }
+
+        if (launchedPaths.Count == 0)
+        {
+            return restored;
+        }
+
+        Thread.Sleep(1500);
+        available = GetMovableWindows()
+            .Where(window => !usedHandles.Contains(window.Handle))
+            .ToList();
+        restored += RestoreAvailableEntries(
+            missing,
+            available,
+            usedHandles,
+            new List<WindowLayoutEntry>());
+        return restored;
+    }
+
+    private static int RestoreAvailableEntries(
+        IEnumerable<WindowLayoutEntry> entries,
+        List<WindowInfo> available,
+        HashSet<IntPtr> usedHandles,
+        List<WindowLayoutEntry> missing)
+    {
+        var restored = 0;
+
+        foreach (var entry in entries)
+        {
+            var match = available.FirstOrDefault(window =>
+                string.Equals(window.ProcessName, entry.ProcessName, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(window.Title, entry.Title, StringComparison.CurrentCultureIgnoreCase));
+
+            if (match is null)
+            {
+                var sameProcess = available
+                    .Where(window => string.Equals(
+                        window.ProcessName,
+                        entry.ProcessName,
+                        StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                if (sameProcess.Count == 1)
+                {
+                    match = sameProcess[0];
+                }
+            }
+
+            if (match is null)
+            {
+                missing.Add(entry);
+                continue;
+            }
+
+            available.Remove(match);
+            usedHandles.Add(match.Handle);
+            var savedBounds = new Rectangle(entry.X, entry.Y, entry.Width, entry.Height);
+            var savedArea = new Rectangle(entry.ScreenX, entry.ScreenY, entry.ScreenWidth, entry.ScreenHeight);
+            var targetScreen = Screen.AllScreens.FirstOrDefault(screen =>
+                                   string.Equals(screen.DeviceName, entry.ScreenDeviceName, StringComparison.OrdinalIgnoreCase))
+                               ?? Screen.FromRectangle(savedBounds);
+            var targetBounds = entry.Maximized
+                ? targetScreen.WorkingArea
+                : MapRectToScreen(savedBounds, savedArea, targetScreen.WorkingArea);
+
+            ShowWindow(match.Handle, SW_RESTORE);
+            MoveWindow(
+                match.Handle,
+                targetBounds.Left,
+                targetBounds.Top,
+                targetBounds.Width,
+                targetBounds.Height,
+                true);
+
+            if (entry.Maximized)
+            {
+                ShowWindow(match.Handle, SW_MAXIMIZE);
+            }
+
+            restored++;
+        }
+
+        return restored;
+    }
+
     public static IReadOnlyList<WindowInfo> GetMovableWindows()
     {
         var windows = new List<WindowInfo>();
@@ -571,6 +733,20 @@ public static class WindowController
         }
     }
 
+    private static string GetProcessPath(IntPtr handle)
+    {
+        try
+        {
+            _ = GetWindowThreadProcessId(handle, out var processId);
+            using var process = Process.GetProcessById((int)processId);
+            return process.MainModule?.FileName ?? string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
     private static string GetWindowClassName(IntPtr handle)
     {
         var buffer = new char[256];
@@ -628,6 +804,9 @@ public static class WindowController
 
     [DllImport("user32.dll", EntryPoint = "GetForegroundWindow")]
     private static extern IntPtr NativeGetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);

@@ -2,17 +2,27 @@ namespace WindowForm_Move;
 
 public sealed class OverlayForm : Form
 {
-    private const int WS_EX_NOACTIVATE = 0x08000000;
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     private const int WS_EX_TOPMOST = 0x00000008;
+    private const int WM_MOUSEACTIVATE = 0x0021;
+    private const int MA_NOACTIVATE = 3;
 
     private readonly Func<bool> _getMoveAllWindows;
     private readonly Action _toggleMoveAllWindows;
     private readonly Func<bool> _getCrosshairEnabled;
     private readonly Action _toggleCrosshair;
+    private readonly Func<IReadOnlyList<string>> _getLayoutNames;
+    private readonly Func<string, bool> _saveLayout;
+    private readonly Func<string, bool> _loadLayout;
+    private readonly Func<string, bool> _deleteLayout;
+    private readonly Func<bool> _getLaunchMissingPrograms;
+    private readonly Action _toggleLaunchMissingPrograms;
     private readonly Action _exitRequested;
+    private readonly ComboBox _layoutCombo = new();
+    private readonly ToolTip _toolTip = new();
     private Button? _allButton;
     private Button? _crosshairButton;
+    private Button? _launchMissingButton;
 
     public IntPtr TargetWindow { get; }
 
@@ -23,7 +33,7 @@ public sealed class OverlayForm : Form
         get
         {
             var cp = base.CreateParams;
-            cp.ExStyle |= WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST;
+            cp.ExStyle |= WS_EX_TOOLWINDOW | WS_EX_TOPMOST;
             return cp;
         }
     }
@@ -34,6 +44,12 @@ public sealed class OverlayForm : Form
         Action toggleMoveAllWindows,
         Func<bool> getCrosshairEnabled,
         Action toggleCrosshair,
+        Func<IReadOnlyList<string>> getLayoutNames,
+        Func<string, bool> saveLayout,
+        Func<string, bool> loadLayout,
+        Func<string, bool> deleteLayout,
+        Func<bool> getLaunchMissingPrograms,
+        Action toggleLaunchMissingPrograms,
         Action exitRequested)
     {
         TargetWindow = targetWindow;
@@ -41,6 +57,12 @@ public sealed class OverlayForm : Form
         _toggleMoveAllWindows = toggleMoveAllWindows;
         _getCrosshairEnabled = getCrosshairEnabled;
         _toggleCrosshair = toggleCrosshair;
+        _getLayoutNames = getLayoutNames;
+        _saveLayout = saveLayout;
+        _loadLayout = loadLayout;
+        _deleteLayout = deleteLayout;
+        _getLaunchMissingPrograms = getLaunchMissingPrograms;
+        _toggleLaunchMissingPrograms = toggleLaunchMissingPrograms;
         _exitRequested = exitRequested;
 
         FormBorderStyle = FormBorderStyle.None;
@@ -48,10 +70,25 @@ public sealed class OverlayForm : Form
         TopMost = true;
         BackColor = Color.FromArgb(28, 28, 28);
         Opacity = 1.0;
-        Size = new Size(440, 28);
+        Size = new Size(614, 28);
         Padding = new Padding(2);
 
         BuildButtons();
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == WM_MOUSEACTIVATE)
+        {
+            var comboBounds = _layoutCombo.RectangleToScreen(_layoutCombo.ClientRectangle);
+            if (!comboBounds.Contains(Cursor.Position))
+            {
+                m.Result = new IntPtr(MA_NOACTIVATE);
+                return;
+            }
+        }
+
+        base.WndProc(ref m);
     }
 
     public bool UpdatePosition(bool buttonsVisible)
@@ -123,6 +160,27 @@ public sealed class OverlayForm : Form
                 : Color.FromArgb(45, 45, 45);
             _crosshairButton.Invalidate();
         }
+
+        if (_launchMissingButton is not null)
+        {
+            _launchMissingButton.BackColor = _getLaunchMissingPrograms()
+                ? Color.FromArgb(0, 105, 145)
+                : Color.FromArgb(45, 45, 45);
+            _launchMissingButton.Invalidate();
+        }
+    }
+
+    public void RefreshLayoutNames(string? selectedName)
+    {
+        var currentText = selectedName ?? _layoutCombo.Text;
+        var names = _getLayoutNames();
+
+        _layoutCombo.BeginUpdate();
+        _layoutCombo.Items.Clear();
+        _layoutCombo.Items.AddRange(names.Cast<object>().ToArray());
+        _layoutCombo.EndUpdate();
+        _layoutCombo.Text = currentText;
+        _layoutCombo.BackColor = Color.White;
     }
 
     private void BuildButtons()
@@ -138,6 +196,24 @@ public sealed class OverlayForm : Form
 
         _crosshairButton = CreateWindowIconButton(WindowControlIcon.Crosshair, _toggleCrosshair, false);
         panel.Controls.Add(_crosshairButton);
+
+        _layoutCombo.Size = new Size(76, 23);
+        _layoutCombo.DropDownWidth = 150;
+        _layoutCombo.Margin = new Padding(1);
+        _layoutCombo.DropDownStyle = ComboBoxStyle.DropDown;
+        _layoutCombo.FlatStyle = FlatStyle.Flat;
+        _layoutCombo.Font = new Font("Segoe UI", 8.5F);
+        panel.Controls.Add(_layoutCombo);
+
+        panel.Controls.Add(CreateLayoutButton(WindowControlIcon.SaveLayout, "Save layout", _saveLayout));
+        panel.Controls.Add(CreateLayoutButton(WindowControlIcon.LoadLayout, "Load layout", _loadLayout));
+        panel.Controls.Add(CreateLayoutButton(WindowControlIcon.DeleteLayout, "Delete layout", _deleteLayout));
+
+        _launchMissingButton = CreateFlatButton("RUN", 28);
+        _launchMissingButton.Font = new Font("Segoe UI", 7F, FontStyle.Bold);
+        _launchMissingButton.Click += (_, _) => _toggleLaunchMissingPrograms();
+        _toolTip.SetToolTip(_launchMissingButton, "Launch missing programs when loading");
+        panel.Controls.Add(_launchMissingButton);
 
         panel.Controls.Add(CreateMoveButton(WindowControlIcon.ArrowLeft, MoveDirection.Left));
         panel.Controls.Add(CreateMoveButton(WindowControlIcon.ArrowRight, MoveDirection.Right));
@@ -174,6 +250,7 @@ public sealed class OverlayForm : Form
         panel.Controls.Add(closeButton);
 
         Controls.Add(panel);
+        RefreshLayoutNames(null);
     }
 
     private Button CreateMoveButton(WindowControlIcon icon, MoveDirection direction)
@@ -185,6 +262,18 @@ public sealed class OverlayForm : Form
     private Button CreateHalfButton(WindowControlIcon icon, WindowHalf half)
     {
         return CreateWindowIconButton(icon, () => WindowController.SnapWindowToHalf(TargetWindow, half), width: 24);
+    }
+
+    private Button CreateLayoutButton(WindowControlIcon icon, string toolTip, Func<string, bool> action)
+    {
+        var button = CreateWindowIconButton(icon, () =>
+        {
+            var succeeded = action(_layoutCombo.Text);
+            _layoutCombo.BackColor = succeeded ? Color.White : Color.MistyRose;
+            WindowController.ActivateWindow(TargetWindow);
+        }, false, 20);
+        _toolTip.SetToolTip(button, toolTip);
+        return button;
     }
 
     private Button CreateWindowIconButton(
@@ -257,6 +346,22 @@ public sealed class OverlayForm : Form
             case WindowControlIcon.Crosshair:
                 graphics.DrawLine(pen, bounds.Width / 2, 5, bounds.Width / 2, 18);
                 graphics.DrawLine(pen, 6, 11, bounds.Width - 6, 11);
+                break;
+            case WindowControlIcon.SaveLayout:
+                graphics.DrawRectangle(pen, 5, 5, bounds.Width - 11, 13);
+                graphics.DrawLine(pen, 8, 5, 8, 10);
+                graphics.DrawLine(pen, 8, 10, bounds.Width - 8, 10);
+                break;
+            case WindowControlIcon.LoadLayout:
+                graphics.DrawLine(pen, bounds.Width / 2, 5, bounds.Width / 2, 15);
+                graphics.DrawLine(pen, bounds.Width / 2, 15, bounds.Width / 2 - 4, 11);
+                graphics.DrawLine(pen, bounds.Width / 2, 15, bounds.Width / 2 + 4, 11);
+                graphics.DrawLine(pen, 5, 18, bounds.Width - 5, 18);
+                break;
+            case WindowControlIcon.DeleteLayout:
+                graphics.DrawRectangle(pen, 7, 8, bounds.Width - 15, 10);
+                graphics.DrawLine(pen, 5, 6, bounds.Width - 5, 6);
+                graphics.DrawLine(pen, 9, 4, bounds.Width - 9, 4);
                 break;
             case WindowControlIcon.HalfLeft:
             case WindowControlIcon.HalfRight:
@@ -332,7 +437,10 @@ public sealed class OverlayForm : Form
         ArrowUpLeft,
         ArrowUpRight,
         ArrowDown,
-        Crosshair
+        Crosshair,
+        SaveLayout,
+        LoadLayout,
+        DeleteLayout
     }
 
     private void MoveTargets(MoveDirection direction)

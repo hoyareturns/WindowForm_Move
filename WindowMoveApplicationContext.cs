@@ -5,12 +5,14 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
     private readonly Dictionary<IntPtr, OverlayForm> _overlays = new();
     private readonly System.Windows.Forms.Timer _scanTimer = new();
     private readonly CrosshairOverlayForm _crosshairOverlay = new();
+    private readonly WindowLayoutStore _layoutStore = new();
     private readonly NotifyIcon _notifyIcon;
     private ToolStripMenuItem? _moveAllMenuItem;
     private ToolStripMenuItem? _crosshairMenuItem;
     private bool _buttonsVisible = true;
     private bool _moveAllWindows;
     private bool _crosshairEnabled;
+    private bool _launchMissingPrograms;
 
     public WindowMoveApplicationContext()
     {
@@ -93,6 +95,12 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
                     ToggleMoveAllWindows,
                     () => _crosshairEnabled,
                     ToggleCrosshair,
+                    _layoutStore.GetNames,
+                    SaveLayout,
+                    LoadLayout,
+                    DeleteLayout,
+                    () => _launchMissingPrograms,
+                    ToggleLaunchMissingPrograms,
                     ExitThread);
             }
         }
@@ -140,6 +148,12 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
         SetCrosshairEnabled(!_crosshairEnabled);
     }
 
+    private void ToggleLaunchMissingPrograms()
+    {
+        _launchMissingPrograms = !_launchMissingPrograms;
+        SyncOverlayToggleStates();
+    }
+
     private void SetCrosshairEnabled(bool enabled)
     {
         _crosshairEnabled = enabled;
@@ -159,5 +173,64 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
         {
             overlay.SyncToggleStates();
         }
+    }
+
+    private bool SaveLayout(string name)
+    {
+        name = NormalizeLayoutName(name);
+        var succeeded = _layoutStore.Save(name);
+        if (succeeded)
+        {
+            RefreshLayoutControls(name);
+        }
+
+        return succeeded;
+    }
+
+    private bool LoadLayout(string name)
+    {
+        var succeeded = _layoutStore.Load(name, _launchMissingPrograms);
+        if (succeeded)
+        {
+            RefreshLayoutControls(name.Trim());
+        }
+
+        return succeeded;
+    }
+
+    private bool DeleteLayout(string name)
+    {
+        var succeeded = _layoutStore.Delete(name);
+        if (succeeded)
+        {
+            RefreshLayoutControls(string.Empty);
+        }
+
+        return succeeded;
+    }
+
+    private void RefreshLayoutControls(string selectedName)
+    {
+        foreach (var overlay in _overlays.Values)
+        {
+            overlay.RefreshLayoutNames(selectedName);
+        }
+    }
+
+    private string NormalizeLayoutName(string name)
+    {
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            return name.Trim();
+        }
+
+        var number = 1;
+        var names = _layoutStore.GetNames();
+        while (names.Contains($"Layout {number}", StringComparer.CurrentCultureIgnoreCase))
+        {
+            number++;
+        }
+
+        return $"Layout {number}";
     }
 }
