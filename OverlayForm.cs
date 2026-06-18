@@ -37,7 +37,7 @@ public sealed class OverlayForm : Form
         TopMost = true;
         BackColor = Color.FromArgb(28, 28, 28);
         Opacity = 1.0;
-        Size = new Size(320, 28);
+        Size = new Size(424, 28);
         Padding = new Padding(2);
 
         BuildButtons();
@@ -45,7 +45,7 @@ public sealed class OverlayForm : Form
 
     public bool UpdatePosition(bool buttonsVisible)
     {
-        if (!buttonsVisible || !WindowController.IsMaximized(TargetWindow) || !WindowController.IsMovableWindow(TargetWindow))
+        if (!buttonsVisible || !WindowController.IsOverlayLayout(TargetWindow) || !WindowController.IsMovableWindow(TargetWindow))
         {
             Hide();
             return false;
@@ -122,6 +122,11 @@ public sealed class OverlayForm : Form
         panel.Controls.Add(CreateMoveButton("↗", MoveDirection.UpRight));
         panel.Controls.Add(CreateMoveButton("↓", MoveDirection.Down));
 
+        panel.Controls.Add(CreateHalfButton(WindowControlIcon.HalfLeft, WindowHalf.Left));
+        panel.Controls.Add(CreateHalfButton(WindowControlIcon.HalfRight, WindowHalf.Right));
+        panel.Controls.Add(CreateHalfButton(WindowControlIcon.HalfTop, WindowHalf.Top));
+        panel.Controls.Add(CreateHalfButton(WindowControlIcon.HalfBottom, WindowHalf.Bottom));
+
         var appExitButton = CreateWindowIconButton(WindowControlIcon.Close, _exitRequested, false);
         panel.Controls.Add(appExitButton);
 
@@ -164,9 +169,18 @@ public sealed class OverlayForm : Form
         return button;
     }
 
-    private Button CreateWindowIconButton(WindowControlIcon icon, Action action, bool requiresTarget = true)
+    private Button CreateHalfButton(WindowControlIcon icon, WindowHalf half)
     {
-        var button = CreateFlatButton(string.Empty);
+        return CreateWindowIconButton(icon, () => WindowController.SnapWindowToHalf(TargetWindow, half), width: 24);
+    }
+
+    private Button CreateWindowIconButton(
+        WindowControlIcon icon,
+        Action action,
+        bool requiresTarget = true,
+        int width = 26)
+    {
+        var button = CreateFlatButton(string.Empty, width);
         button.Paint += (_, e) => DrawWindowControlIcon(e.Graphics, button.ClientRectangle, icon);
         button.Click += (_, _) =>
         {
@@ -214,14 +228,42 @@ public sealed class OverlayForm : Form
                 graphics.DrawLine(pen, 8, 6, bounds.Width - 8, 17);
                 graphics.DrawLine(pen, bounds.Width - 8, 6, 8, 17);
                 break;
+            case WindowControlIcon.HalfLeft:
+            case WindowControlIcon.HalfRight:
+            case WindowControlIcon.HalfTop:
+            case WindowControlIcon.HalfBottom:
+                DrawHalfIcon(graphics, bounds, pen, icon);
+                break;
         }
+    }
+
+    private static void DrawHalfIcon(Graphics graphics, Rectangle bounds, Pen pen, WindowControlIcon icon)
+    {
+        var frame = new Rectangle(5, 5, bounds.Width - 11, 12);
+        var inner = Rectangle.Inflate(frame, -2, -2);
+        var fill = icon switch
+        {
+            WindowControlIcon.HalfLeft => new Rectangle(inner.Left, inner.Top, inner.Width / 2, inner.Height),
+            WindowControlIcon.HalfRight => new Rectangle(inner.Left + inner.Width / 2, inner.Top, inner.Width - inner.Width / 2, inner.Height),
+            WindowControlIcon.HalfTop => new Rectangle(inner.Left, inner.Top, inner.Width, inner.Height / 2),
+            WindowControlIcon.HalfBottom => new Rectangle(inner.Left, inner.Top + inner.Height / 2, inner.Width, inner.Height - inner.Height / 2),
+            _ => Rectangle.Empty
+        };
+
+        graphics.DrawRectangle(pen, frame);
+        using var brush = new SolidBrush(Color.White);
+        graphics.FillRectangle(brush, fill);
     }
 
     private enum WindowControlIcon
     {
         Minimize,
         Maximize,
-        Close
+        Close,
+        HalfLeft,
+        HalfRight,
+        HalfTop,
+        HalfBottom
     }
 
     private void MoveTargets(MoveDirection direction)

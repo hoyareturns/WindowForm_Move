@@ -20,6 +20,14 @@ public enum WindowAction
     Restore
 }
 
+public enum WindowHalf
+{
+    Left,
+    Right,
+    Top,
+    Bottom
+}
+
 public sealed record WindowInfo(IntPtr Handle, string Title, string ProcessName)
 {
     public string DisplayName => string.IsNullOrWhiteSpace(ProcessName)
@@ -182,6 +190,24 @@ public static class WindowController
                windowRect.Bottom >= workingArea.Bottom - frameTolerance;
     }
 
+    public static bool IsOverlayLayout(IntPtr handle)
+    {
+        if (IsMaximized(handle))
+        {
+            return true;
+        }
+
+        if (!TryGetWindowRectangle(handle, out var windowRect))
+        {
+            return false;
+        }
+
+        var workingArea = Screen.FromHandle(handle).WorkingArea;
+        return Enum.GetValues<WindowHalf>()
+            .Select(half => GetHalfRectangle(workingArea, half))
+            .Any(expected => RectanglesApproximatelyEqual(windowRect, expected));
+    }
+
     public static bool TryGetWindowRectangle(IntPtr handle, out Rectangle rectangle)
     {
         if (!GetWindowRect(handle, out var rect))
@@ -276,6 +302,22 @@ public static class WindowController
         }
 
         return true;
+    }
+
+    public static bool SnapWindowToHalf(IntPtr handle, WindowHalf half)
+    {
+        if (!IsMovableWindow(handle))
+        {
+            return false;
+        }
+
+        if (IsZoomed(handle) || IsIconic(handle))
+        {
+            ShowWindow(handle, SW_RESTORE);
+        }
+
+        var target = GetHalfRectangle(Screen.FromHandle(handle).WorkingArea, half);
+        return MoveWindow(handle, target.Left, target.Top, target.Width, target.Height, true);
     }
 
     public static void ApplyAction(IntPtr handle, WindowAction action)
@@ -435,6 +477,37 @@ public static class WindowController
         top = Math.Clamp(top, toArea.Top, toArea.Bottom - height);
 
         return new Rectangle(left, top, width, height);
+    }
+
+    private static Rectangle GetHalfRectangle(Rectangle workingArea, WindowHalf half)
+    {
+        var leftWidth = workingArea.Width / 2;
+        var topHeight = workingArea.Height / 2;
+        return half switch
+        {
+            WindowHalf.Left => new Rectangle(workingArea.Left, workingArea.Top, leftWidth, workingArea.Height),
+            WindowHalf.Right => new Rectangle(
+                workingArea.Left + leftWidth,
+                workingArea.Top,
+                workingArea.Width - leftWidth,
+                workingArea.Height),
+            WindowHalf.Top => new Rectangle(workingArea.Left, workingArea.Top, workingArea.Width, topHeight),
+            WindowHalf.Bottom => new Rectangle(
+                workingArea.Left,
+                workingArea.Top + topHeight,
+                workingArea.Width,
+                workingArea.Height - topHeight),
+            _ => workingArea
+        };
+    }
+
+    private static bool RectanglesApproximatelyEqual(Rectangle actual, Rectangle expected)
+    {
+        const int tolerance = 12;
+        return Math.Abs(actual.Left - expected.Left) <= tolerance &&
+               Math.Abs(actual.Top - expected.Top) <= tolerance &&
+               Math.Abs(actual.Right - expected.Right) <= tolerance &&
+               Math.Abs(actual.Bottom - expected.Bottom) <= tolerance;
     }
 
     private static Rectangle NudgeWithinVirtualScreen(Rectangle rect, MoveDirection direction)
