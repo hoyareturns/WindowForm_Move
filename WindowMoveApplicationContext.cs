@@ -13,6 +13,7 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
     private bool _moveAllWindows;
     private bool _crosshairEnabled;
     private bool _launchMissingPrograms;
+    private bool _layoutControlsExpanded;
 
     public WindowMoveApplicationContext()
     {
@@ -101,6 +102,8 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
                     DeleteLayout,
                     () => _launchMissingPrograms,
                     ToggleLaunchMissingPrograms,
+                    () => _layoutControlsExpanded,
+                    ToggleLayoutControls,
                     ExitThread);
             }
         }
@@ -152,6 +155,13 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
     {
         _launchMissingPrograms = !_launchMissingPrograms;
         SyncOverlayToggleStates();
+    }
+
+    private void ToggleLayoutControls()
+    {
+        _layoutControlsExpanded = !_layoutControlsExpanded;
+        SyncOverlayToggleStates();
+        SyncOverlays();
     }
 
     private void SetCrosshairEnabled(bool enabled)

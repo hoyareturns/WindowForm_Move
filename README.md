@@ -12,6 +12,8 @@ It does not inject code into other programs. Instead, it runs lightweight overla
 - Saves named multi-window layouts and restores or deletes them from the button strip
 - Optionally launches missing programs before restoring a saved layout
 - Restores only matching windows; unmatched or login-required windows are left untouched
+- Provides Korean hover tooltips for every control
+- Collapses the layout profile controls when they are not needed
 - If there is no monitor in that direction, nudges the window inside the virtual desktop
 - Keeps maximized windows maximized after moving
 - Provides a click-through crosshair guide that follows the mouse across the current monitor
