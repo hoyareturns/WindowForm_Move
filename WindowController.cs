@@ -73,17 +73,60 @@ public static class WindowController
             ShowWindow(handle, SW_RESTORE);
         }
 
-        if (!SetForegroundWindow(handle))
+        if (!TryActivateWindow(handle))
         {
             return false;
         }
 
-        Thread.Sleep(80);
         SendKeyChord(VK_CONTROL, VK_F);
-        Thread.Sleep(180);
+        Thread.Sleep(250);
         SendUnicodeText(query);
         SendVirtualKey(VK_RETURN);
         return true;
+    }
+
+    private static bool TryActivateWindow(IntPtr handle)
+    {
+        var currentThread = GetCurrentThreadId();
+        var targetThread = GetWindowThreadProcessId(handle, out var targetProcess);
+        var foregroundWindow = NativeGetForegroundWindow();
+        var foregroundThread = GetWindowThreadProcessId(foregroundWindow, out _);
+        var attachedToTarget = false;
+        var attachedToForeground = false;
+
+        try
+        {
+            if (targetThread != 0 && targetThread != currentThread)
+            {
+                attachedToTarget = AttachThreadInput(currentThread, targetThread, true);
+            }
+
+            if (foregroundThread != 0 && foregroundThread != currentThread && foregroundThread != targetThread)
+            {
+                attachedToForeground = AttachThreadInput(currentThread, foregroundThread, true);
+            }
+
+            BringWindowToTop(handle);
+            SetForegroundWindow(handle);
+            SetFocus(handle);
+        }
+        finally
+        {
+            if (attachedToForeground)
+            {
+                AttachThreadInput(currentThread, foregroundThread, false);
+            }
+
+            if (attachedToTarget)
+            {
+                AttachThreadInput(currentThread, targetThread, false);
+            }
+        }
+
+        Thread.Sleep(100);
+        var activeWindow = NativeGetForegroundWindow();
+        GetWindowThreadProcessId(activeWindow, out var activeProcess);
+        return activeWindow == handle || (targetProcess != 0 && activeProcess == targetProcess);
     }
 
     private static void SendKeyChord(ushort modifier, ushort key)
@@ -752,6 +795,18 @@ public static class WindowController
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool BringWindowToTop(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetFocus(IntPtr hWnd);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll")]
+    private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool attach);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint inputCount, NativeInput[] inputs, int inputSize);

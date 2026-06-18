@@ -11,7 +11,7 @@ public sealed class OverlayForm : Form
     private readonly Action _toggleMoveAllWindows;
     private readonly Func<bool> _getCrosshairEnabled;
     private readonly Action _toggleCrosshair;
-    private readonly Action<IntPtr, string> _searchRequested;
+    private readonly Func<IntPtr, string, bool> _searchRequested;
     private readonly Action _exitRequested;
     private readonly TextBox _searchBox = new();
     private Button? _allButton;
@@ -37,7 +37,7 @@ public sealed class OverlayForm : Form
         Action toggleMoveAllWindows,
         Func<bool> getCrosshairEnabled,
         Action toggleCrosshair,
-        Action<IntPtr, string> searchRequested,
+        Func<IntPtr, string, bool> searchRequested,
         Action exitRequested)
     {
         TargetWindow = targetWindow;
@@ -164,7 +164,8 @@ public sealed class OverlayForm : Form
         _searchBox.BorderStyle = BorderStyle.FixedSingle;
         _searchBox.Font = new Font("Segoe UI", 9F);
         _searchBox.PlaceholderText = "Find";
-        _searchBox.KeyDown += SearchBoxKeyDown;
+        _searchBox.KeyPress += SearchBoxKeyPress;
+        _searchBox.TextChanged += (_, _) => _searchBox.BackColor = Color.White;
         panel.Controls.Add(_searchBox);
 
         panel.Controls.Add(CreateMoveButton(WindowControlIcon.ArrowLeft, MoveDirection.Left));
@@ -363,15 +364,26 @@ public sealed class OverlayForm : Form
         Crosshair
     }
 
-    private void SearchBoxKeyDown(object? sender, KeyEventArgs e)
+    private void SearchBoxKeyPress(object? sender, KeyPressEventArgs e)
     {
-        if (e.KeyCode != Keys.Enter || string.IsNullOrWhiteSpace(_searchBox.Text))
+        if (e.KeyChar != (char)Keys.Return)
         {
             return;
         }
 
-        e.SuppressKeyPress = true;
-        _searchRequested(TargetWindow, _searchBox.Text);
+        e.Handled = true;
+        BeginInvoke(new Action(SubmitSearch));
+    }
+
+    private void SubmitSearch()
+    {
+        if (string.IsNullOrWhiteSpace(_searchBox.Text))
+        {
+            return;
+        }
+
+        var succeeded = _searchRequested(TargetWindow, _searchBox.Text);
+        _searchBox.BackColor = succeeded ? Color.White : Color.MistyRose;
         _searchBox.SelectAll();
     }
 
