@@ -2,15 +2,18 @@ namespace WindowForm_Move;
 
 public sealed class OverlayForm : Form
 {
-    private const int WS_EX_NOACTIVATE = 0x08000000;
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     private const int WS_EX_TOPMOST = 0x00000008;
+    private const int WM_MOUSEACTIVATE = 0x0021;
+    private const int MA_NOACTIVATE = 3;
 
     private readonly Func<bool> _getMoveAllWindows;
     private readonly Action _toggleMoveAllWindows;
     private readonly Func<bool> _getCrosshairEnabled;
     private readonly Action _toggleCrosshair;
+    private readonly Action<IntPtr, string> _searchRequested;
     private readonly Action _exitRequested;
+    private readonly TextBox _searchBox = new();
     private Button? _allButton;
     private Button? _crosshairButton;
 
@@ -23,7 +26,7 @@ public sealed class OverlayForm : Form
         get
         {
             var cp = base.CreateParams;
-            cp.ExStyle |= WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST;
+            cp.ExStyle |= WS_EX_TOOLWINDOW | WS_EX_TOPMOST;
             return cp;
         }
     }
@@ -34,6 +37,7 @@ public sealed class OverlayForm : Form
         Action toggleMoveAllWindows,
         Func<bool> getCrosshairEnabled,
         Action toggleCrosshair,
+        Action<IntPtr, string> searchRequested,
         Action exitRequested)
     {
         TargetWindow = targetWindow;
@@ -41,6 +45,7 @@ public sealed class OverlayForm : Form
         _toggleMoveAllWindows = toggleMoveAllWindows;
         _getCrosshairEnabled = getCrosshairEnabled;
         _toggleCrosshair = toggleCrosshair;
+        _searchRequested = searchRequested;
         _exitRequested = exitRequested;
 
         FormBorderStyle = FormBorderStyle.None;
@@ -48,10 +53,25 @@ public sealed class OverlayForm : Form
         TopMost = true;
         BackColor = Color.FromArgb(28, 28, 28);
         Opacity = 1.0;
-        Size = new Size(440, 28);
+        Size = new Size(584, 28);
         Padding = new Padding(2);
 
         BuildButtons();
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == WM_MOUSEACTIVATE)
+        {
+            var searchBounds = _searchBox.RectangleToScreen(_searchBox.ClientRectangle);
+            if (!searchBounds.Contains(Cursor.Position))
+            {
+                m.Result = new IntPtr(MA_NOACTIVATE);
+                return;
+            }
+        }
+
+        base.WndProc(ref m);
     }
 
     public bool UpdatePosition(bool buttonsVisible)
@@ -136,6 +156,17 @@ public sealed class OverlayForm : Form
             Padding = Padding.Empty
         };
 
+        _crosshairButton = CreateWindowIconButton(WindowControlIcon.Crosshair, _toggleCrosshair, false);
+        panel.Controls.Add(_crosshairButton);
+
+        _searchBox.Size = new Size(140, 23);
+        _searchBox.Margin = new Padding(1);
+        _searchBox.BorderStyle = BorderStyle.FixedSingle;
+        _searchBox.Font = new Font("Segoe UI", 9F);
+        _searchBox.PlaceholderText = "Find";
+        _searchBox.KeyDown += SearchBoxKeyDown;
+        panel.Controls.Add(_searchBox);
+
         panel.Controls.Add(CreateMoveButton(WindowControlIcon.ArrowLeft, MoveDirection.Left));
         panel.Controls.Add(CreateMoveButton(WindowControlIcon.ArrowRight, MoveDirection.Right));
         panel.Controls.Add(CreateMoveButton(WindowControlIcon.ArrowUpLeft, MoveDirection.UpLeft));
@@ -146,9 +177,6 @@ public sealed class OverlayForm : Form
         panel.Controls.Add(CreateHalfButton(WindowControlIcon.HalfRight, WindowHalf.Right));
         panel.Controls.Add(CreateHalfButton(WindowControlIcon.HalfTop, WindowHalf.Top));
         panel.Controls.Add(CreateHalfButton(WindowControlIcon.HalfBottom, WindowHalf.Bottom));
-
-        _crosshairButton = CreateWindowIconButton(WindowControlIcon.Crosshair, _toggleCrosshair, false);
-        panel.Controls.Add(_crosshairButton);
 
         var appExitButton = CreateWindowIconButton(WindowControlIcon.Close, _exitRequested, false);
         panel.Controls.Add(appExitButton);
@@ -333,6 +361,18 @@ public sealed class OverlayForm : Form
         ArrowUpRight,
         ArrowDown,
         Crosshair
+    }
+
+    private void SearchBoxKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode != Keys.Enter || string.IsNullOrWhiteSpace(_searchBox.Text))
+        {
+            return;
+        }
+
+        e.SuppressKeyPress = true;
+        _searchRequested(TargetWindow, _searchBox.Text);
+        _searchBox.SelectAll();
     }
 
     private void MoveTargets(MoveDirection direction)

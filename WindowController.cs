@@ -49,11 +49,108 @@ public static class WindowController
     private const int DWMWA_CLOAKED = 14;
     private const long WS_EX_TOOLWINDOW = 0x00000080L;
     private const long WS_EX_APPWINDOW = 0x00040000L;
+    private const uint INPUT_KEYBOARD = 1;
+    private const uint KEYEVENTF_KEYUP = 0x0002;
+    private const uint KEYEVENTF_UNICODE = 0x0004;
+    private const ushort VK_CONTROL = 0x11;
+    private const ushort VK_F = 0x46;
+    private const ushort VK_RETURN = 0x0D;
 
     private static readonly IntPtr ShellWindow = GetShellWindow();
     private static readonly int CurrentProcessId = Environment.ProcessId;
 
     public static IntPtr GetForegroundWindow() => NativeGetForegroundWindow();
+
+    public static bool FindTextInWindow(IntPtr handle, string query)
+    {
+        if (!IsMovableWindow(handle) || string.IsNullOrEmpty(query))
+        {
+            return false;
+        }
+
+        if (IsIconic(handle))
+        {
+            ShowWindow(handle, SW_RESTORE);
+        }
+
+        if (!SetForegroundWindow(handle))
+        {
+            return false;
+        }
+
+        Thread.Sleep(80);
+        SendKeyChord(VK_CONTROL, VK_F);
+        Thread.Sleep(180);
+        SendUnicodeText(query);
+        SendVirtualKey(VK_RETURN);
+        return true;
+    }
+
+    private static void SendKeyChord(ushort modifier, ushort key)
+    {
+        SendKeyboardInputs(
+            CreateVirtualKeyInput(modifier, false),
+            CreateVirtualKeyInput(key, false),
+            CreateVirtualKeyInput(key, true),
+            CreateVirtualKeyInput(modifier, true));
+    }
+
+    private static void SendVirtualKey(ushort key)
+    {
+        SendKeyboardInputs(CreateVirtualKeyInput(key, false), CreateVirtualKeyInput(key, true));
+    }
+
+    private static void SendUnicodeText(string text)
+    {
+        var inputs = new List<NativeInput>(text.Length * 2);
+        foreach (var character in text)
+        {
+            inputs.Add(CreateUnicodeInput(character, false));
+            inputs.Add(CreateUnicodeInput(character, true));
+        }
+
+        SendKeyboardInputs(inputs.ToArray());
+    }
+
+    private static void SendKeyboardInputs(params NativeInput[] inputs)
+    {
+        if (inputs.Length > 0)
+        {
+            SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeInput>());
+        }
+    }
+
+    private static NativeInput CreateVirtualKeyInput(ushort key, bool keyUp)
+    {
+        return new NativeInput
+        {
+            Type = INPUT_KEYBOARD,
+            Data = new NativeInputUnion
+            {
+                Keyboard = new NativeKeyboardInput
+                {
+                    VirtualKey = key,
+                    Flags = keyUp ? KEYEVENTF_KEYUP : 0
+                }
+            }
+        };
+    }
+
+    private static NativeInput CreateUnicodeInput(char character, bool keyUp)
+    {
+        return new NativeInput
+        {
+            Type = INPUT_KEYBOARD,
+            Data = new NativeInputUnion
+            {
+                Keyboard = new NativeKeyboardInput
+                {
+                    ScanCode = character,
+                    Flags = KEYEVENTF_UNICODE | (keyUp ? KEYEVENTF_KEYUP : 0)
+                }
+            }
+        };
+    }
 
     public static IReadOnlyList<WindowInfo> GetMovableWindows()
     {
@@ -603,6 +700,30 @@ public static class WindowController
         public Rectangle NormalPosition;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeInput
+    {
+        public uint Type;
+        public NativeInputUnion Data;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    private struct NativeInputUnion
+    {
+        [FieldOffset(0)]
+        public NativeKeyboardInput Keyboard;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeKeyboardInput
+    {
+        public ushort VirtualKey;
+        public ushort ScanCode;
+        public uint Flags;
+        public uint Time;
+        public UIntPtr ExtraInfo;
+    }
+
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
     [DllImport("user32.dll")]
@@ -628,6 +749,12 @@ public static class WindowController
 
     [DllImport("user32.dll", EntryPoint = "GetForegroundWindow")]
     private static extern IntPtr NativeGetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint SendInput(uint inputCount, NativeInput[] inputs, int inputSize);
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
