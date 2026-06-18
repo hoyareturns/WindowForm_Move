@@ -36,7 +36,7 @@ public sealed class OverlayForm : Form
         ShowInTaskbar = false;
         TopMost = true;
         BackColor = Color.FromArgb(28, 28, 28);
-        Opacity = 0.86;
+        Opacity = 1.0;
         Size = new Size(320, 28);
         Padding = new Padding(2);
 
@@ -122,9 +122,7 @@ public sealed class OverlayForm : Form
         panel.Controls.Add(CreateMoveButton("↗", MoveDirection.UpRight));
         panel.Controls.Add(CreateMoveButton("↓", MoveDirection.Down));
 
-        var appExitButton = CreateFlatButton("X");
-        ApplyWindowControlFont(appExitButton, 11F);
-        appExitButton.Click += (_, _) => _exitRequested();
+        var appExitButton = CreateWindowIconButton(WindowControlIcon.Close, _exitRequested, false);
         panel.Controls.Add(appExitButton);
 
         _allCheck.Text = "ALL";
@@ -136,16 +134,19 @@ public sealed class OverlayForm : Form
         _allCheck.CheckedChanged += AllCheckChanged;
         panel.Controls.Add(_allCheck);
 
-        var minimizeButton = CreateWindowActionButton("━", () => WindowController.ApplyAction(TargetWindow, WindowAction.Minimize));
-        ApplyWindowControlFont(minimizeButton, 12F);
+        var minimizeButton = CreateWindowIconButton(
+            WindowControlIcon.Minimize,
+            () => WindowController.ApplyAction(TargetWindow, WindowAction.Minimize));
         panel.Controls.Add(minimizeButton);
 
-        var maximizeButton = CreateWindowActionButton("□", () => WindowController.ToggleMaximizeWindow(TargetWindow));
-        ApplyWindowControlFont(maximizeButton, 13F);
+        var maximizeButton = CreateWindowIconButton(
+            WindowControlIcon.Maximize,
+            () => WindowController.ToggleMaximizeWindow(TargetWindow));
         panel.Controls.Add(maximizeButton);
 
-        var closeButton = CreateWindowActionButton("X", () => WindowController.CloseWindow(TargetWindow));
-        ApplyWindowControlFont(closeButton, 11F);
+        var closeButton = CreateWindowIconButton(
+            WindowControlIcon.Close,
+            () => WindowController.CloseWindow(TargetWindow));
         panel.Controls.Add(closeButton);
 
         Controls.Add(panel);
@@ -163,12 +164,13 @@ public sealed class OverlayForm : Form
         return button;
     }
 
-    private Button CreateWindowActionButton(string text, Action action)
+    private Button CreateWindowIconButton(WindowControlIcon icon, Action action, bool requiresTarget = true)
     {
-        var button = CreateFlatButton(text);
+        var button = CreateFlatButton(string.Empty);
+        button.Paint += (_, e) => DrawWindowControlIcon(e.Graphics, button.ClientRectangle, icon);
         button.Click += (_, _) =>
         {
-            if (TargetWindow != IntPtr.Zero && WindowController.IsMovableWindow(TargetWindow))
+            if (!requiresTarget || (TargetWindow != IntPtr.Zero && WindowController.IsMovableWindow(TargetWindow)))
             {
                 action();
             }
@@ -195,9 +197,31 @@ public sealed class OverlayForm : Form
         return button;
     }
 
-    private static void ApplyWindowControlFont(Button button, float size)
+    private static void DrawWindowControlIcon(Graphics graphics, Rectangle bounds, WindowControlIcon icon)
     {
-        button.Font = new Font("Segoe UI Symbol", size, FontStyle.Bold);
+        graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        using var pen = new Pen(Color.White, icon == WindowControlIcon.Close ? 2.2F : 2F);
+
+        switch (icon)
+        {
+            case WindowControlIcon.Minimize:
+                graphics.DrawLine(pen, 7, 15, bounds.Width - 7, 15);
+                break;
+            case WindowControlIcon.Maximize:
+                graphics.DrawRectangle(pen, 7, 6, bounds.Width - 15, 11);
+                break;
+            case WindowControlIcon.Close:
+                graphics.DrawLine(pen, 8, 6, bounds.Width - 8, 17);
+                graphics.DrawLine(pen, bounds.Width - 8, 6, 8, 17);
+                break;
+        }
+    }
+
+    private enum WindowControlIcon
+    {
+        Minimize,
+        Maximize,
+        Close
     }
 
     private void MoveTargets(MoveDirection direction)
