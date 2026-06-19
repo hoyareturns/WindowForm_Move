@@ -31,7 +31,7 @@ public sealed class AnnotationOverlayForm : Form
     }
 
     public AnnotationOverlayForm(
-        Screen screen,
+        Rectangle virtualBounds,
         Func<IReadOnlyList<AnnotationItem>> getItems,
         Action<Point> addMarker,
         Action<Point> beginStroke,
@@ -40,7 +40,6 @@ public sealed class AnnotationOverlayForm : Form
         Action<Point> eraseAt,
         Func<AnnotationSettings> getSettings)
     {
-        ScreenDeviceName = screen.DeviceName;
         _getItems = getItems;
         _addMarker = addMarker;
         _beginStroke = beginStroke;
@@ -55,11 +54,17 @@ public sealed class AnnotationOverlayForm : Form
         BackColor = Color.Fuchsia;
         TransparencyKey = Color.Fuchsia;
         DoubleBuffered = true;
-        Bounds = screen.Bounds;
+        Bounds = virtualBounds;
         Cursor = Cursors.Cross;
     }
 
-    public string ScreenDeviceName { get; }
+    public void UpdateVirtualBounds(Rectangle virtualBounds)
+    {
+        if (Bounds != virtualBounds)
+        {
+            Bounds = virtualBounds;
+        }
+    }
 
     public void SetActiveTool(AnnotationTool tool)
     {
@@ -78,10 +83,22 @@ public sealed class AnnotationOverlayForm : Form
         UpdateVisibility();
     }
 
-    public void RefreshAnnotations()
+    public void RefreshAnnotations(Rectangle? screenArea = null)
     {
         UpdateVisibility();
-        Invalidate();
+        if (screenArea is null)
+        {
+            Invalidate();
+            return;
+        }
+
+        var localArea = screenArea.Value;
+        localArea.Offset(-Left, -Top);
+        localArea.Intersect(ClientRectangle);
+        if (!localArea.IsEmpty)
+        {
+            Invalidate(localArea);
+        }
     }
 
     protected override void OnMouseDown(MouseEventArgs e)
@@ -138,7 +155,7 @@ public sealed class AnnotationOverlayForm : Form
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None;
 
         foreach (var item in _getItems())
         {
@@ -181,16 +198,12 @@ public sealed class AnnotationOverlayForm : Form
         var diameter = settings.MarkerSize;
         var circle = new Rectangle(center.X - diameter / 2, center.Y - diameter / 2, diameter, diameter);
 
-        using var shadowBrush = new SolidBrush(Color.FromArgb(130, 0, 0, 0));
-        var shadow = new Rectangle(circle.X + 2, circle.Y + 2, circle.Width, circle.Height);
-        graphics.FillEllipse(shadowBrush, shadow);
-        using var fillBrush = new SolidBrush(Color.FromArgb(225, settings.MarkerColor));
-        using var borderPen = new Pen(Color.White, 2F);
+        using var fillBrush = new SolidBrush(settings.MarkerColor);
         graphics.FillEllipse(fillBrush, circle);
-        graphics.DrawEllipse(borderPen, circle);
 
         using var font = new Font("Segoe UI", marker.Number >= 100 ? 8F : 10F, FontStyle.Bold);
         using var textBrush = new SolidBrush(Color.White);
+        graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.SingleBitPerPixelGridFit;
         var text = marker.Number.ToString();
         var size = graphics.MeasureString(text, font);
         graphics.DrawString(text, font, textBrush, center.X - size.Width / 2, center.Y - size.Height / 2);

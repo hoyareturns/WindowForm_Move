@@ -5,7 +5,7 @@ namespace WindowForm_Move;
 public sealed class AnnotationManager : IDisposable
 {
     private readonly List<AnnotationItem> _items = new();
-    private readonly Dictionary<string, AnnotationOverlayForm> _overlays = new(StringComparer.OrdinalIgnoreCase);
+    private AnnotationOverlayForm? _overlay;
     private readonly AnnotationSettings _settings = AnnotationSettings.Load();
     private readonly GlobalMouseHook _mouseHook = new();
     private DrawingStroke? _activeStroke;
@@ -36,11 +36,8 @@ public sealed class AnnotationManager : IDisposable
         {
             _mouseHook.Start();
         }
-        EnsureOverlays();
-        foreach (var overlay in _overlays.Values)
-        {
-            overlay.SetActiveTool(tool);
-        }
+        EnsureOverlay();
+        _overlay?.SetActiveTool(tool);
     }
 
     public void UndoLast()
@@ -104,19 +101,17 @@ public sealed class AnnotationManager : IDisposable
     public void Dispose()
     {
         _mouseHook.Dispose();
-        foreach (var overlay in _overlays.Values)
-        {
-            overlay.Dispose();
-        }
-
-        _overlays.Clear();
+        _overlay?.Dispose();
+        _overlay = null;
     }
 
     private void AddMarker(Point location)
     {
-        var markerNumber = _items.OfType<ScreenMarker>().Select(marker => marker.Number).DefaultIfEmpty(0).Max() + 1;
+        var markerNumber = _settings.NextMarkerNumber;
         _items.Add(new ScreenMarker(markerNumber, location));
-        RefreshOverlays();
+        _settings.NextMarkerNumber++;
+        _settings.Save();
+        RefreshArea(location, location, _settings.MarkerSize / 2F + 3F);
     }
 
     public void ShowSettings()
@@ -148,7 +143,7 @@ public sealed class AnnotationManager : IDisposable
     {
         _activeStroke = new DrawingStroke(new List<Point> { location }, _settings.PenColor, _settings.PenWidth);
         _items.Add(_activeStroke);
-        RefreshOverlays();
+        RefreshArea(location, location, _settings.PenWidth + 3F);
     }
 
     private void AppendStroke(Point location)
@@ -165,7 +160,7 @@ public sealed class AnnotationManager : IDisposable
         }
 
         _activeStroke.Points.Add(location);
-        RefreshOverlays();
+        RefreshArea(last, location, _activeStroke.Width + 3F);
     }
 
     private void EndStroke()
@@ -173,41 +168,31 @@ public sealed class AnnotationManager : IDisposable
         _activeStroke = null;
     }
 
-    private void EnsureOverlays()
+    private void EnsureOverlay()
     {
-        var screens = Screen.AllScreens;
-        var liveNames = screens.Select(screen => screen.DeviceName).ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var screen in screens)
+        var virtualBounds = SystemInformation.VirtualScreen;
+        if (_overlay is null || _overlay.IsDisposed)
         {
-            if (!_overlays.ContainsKey(screen.DeviceName))
-            {
-                _overlays[screen.DeviceName] = new AnnotationOverlayForm(
-                    screen,
-                    GetItems,
-                    AddMarker,
-                    BeginStroke,
-                    AppendStroke,
-                    EndStroke,
-                    EraseAt,
-                    GetSettings);
-            }
+            _overlay = new AnnotationOverlayForm(
+                virtualBounds,
+                GetItems,
+                AddMarker,
+                BeginStroke,
+                AppendStroke,
+                EndStroke,
+                EraseAt,
+                GetSettings);
         }
-
-        foreach (var name in _overlays.Keys.Where(name => !liveNames.Contains(name)).ToList())
+        else
         {
-            _overlays[name].Dispose();
-            _overlays.Remove(name);
+            _overlay.UpdateVirtualBounds(virtualBounds);
         }
     }
 
     private void RefreshOverlays()
     {
-        EnsureOverlays();
-        foreach (var overlay in _overlays.Values)
-        {
-            overlay.RefreshAnnotations();
-        }
+        EnsureOverlay();
+        _overlay?.RefreshAnnotations();
     }
 
     private void EraseAt(Point location)
@@ -219,8 +204,10 @@ public sealed class AnnotationManager : IDisposable
                 continue;
             }
 
+            var invalidArea = GetItemBounds(_items[index]);
             _items.RemoveAt(index);
-            RefreshOverlays();
+            EnsureOverlay();
+            _overlay?.RefreshAnnotations(invalidArea);
             return;
         }
     }
@@ -334,5 +321,38 @@ public sealed class AnnotationManager : IDisposable
         var offsetX = point.X - nearestX;
         var offsetY = point.Y - nearestY;
         return MathF.Sqrt(offsetX * offsetX + offsetY * offsetY);
+    }
+
+    private void RefreshArea(Point first, Point second, float padding)
+    {
+        var pad = (int)Math.Ceiling(padding);
+        var area = Rectangle.FromLTRB(
+            Math.Min(first.X, second.X) - pad,
+            Math.Min(first.Y, second.Y) - pad,
+            Math.Max(first.X, second.X) + pad + 1,
+            Math.Max(first.Y, second.Y) + pad + 1);
+        EnsureOverlay();
+        _overlay?.RefreshAnnotations(area);
+    }
+
+    private Rectangle GetItemBounds(AnnotationItem item)
+    {
+        if (item is ScreenMarker marker)
+        {
+            var radius = _settings.MarkerSize / 2 + 3;
+            return new Rectangle(marker.Location.X - radius, marker.Location.Y - radius, radius * 2 + 1, radius * 2 + 1);
+        }
+
+        if (item is DrawingStroke stroke && stroke.Points.Count > 0)
+        {
+            var pad = (int)Math.Ceiling(stroke.Width + 3F);
+            return Rectangle.FromLTRB(
+                stroke.Points.Min(point => point.X) - pad,
+                stroke.Points.Min(point => point.Y) - pad,
+                stroke.Points.Max(point => point.X) + pad + 1,
+                stroke.Points.Max(point => point.Y) + pad + 1);
+        }
+
+        return Rectangle.Empty;
     }
 }

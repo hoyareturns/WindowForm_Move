@@ -4,6 +4,7 @@ public sealed class AnnotationSettingsForm : Form
 {
     private readonly Button _markerColorButton;
     private readonly NumericUpDown _markerSizeInput;
+    private readonly NumericUpDown _nextMarkerNumberInput;
     private readonly Button _penColorButton;
     private readonly NumericUpDown _penWidthInput;
 
@@ -15,21 +16,22 @@ public sealed class AnnotationSettingsForm : Form
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
-        ClientSize = new Size(310, 190);
+        ClientSize = new Size(310, 220);
         Font = new Font("Segoe UI", 9F);
 
         _markerColorButton = CreateColorButton(settings.MarkerColor);
         _markerSizeInput = CreateNumberInput(settings.MarkerSize, 18, 60, 1);
+        _nextMarkerNumberInput = CreateNumberInput(settings.NextMarkerNumber, 1, 9999, 1);
         _penColorButton = CreateColorButton(settings.PenColor);
         _penWidthInput = CreateNumberInput((decimal)settings.PenWidth, 1, 20, 1);
 
         var table = new TableLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 130,
+            Height = 158,
             Padding = new Padding(14),
             ColumnCount = 2,
-            RowCount = 4
+            RowCount = 5
         };
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
@@ -37,12 +39,13 @@ public sealed class AnnotationSettingsForm : Form
         AddRow(table, 1, "마커 크기", _markerSizeInput);
         AddRow(table, 2, "펜 색상", _penColorButton);
         AddRow(table, 3, "펜 두께", _penWidthInput);
+        AddRow(table, 4, "다음 마커 번호", _nextMarkerNumberInput);
         Controls.Add(table);
 
         var cancel = new Button { Text = "취소", DialogResult = DialogResult.Cancel, Size = new Size(76, 28) };
         var ok = new Button { Text = "확인", DialogResult = DialogResult.OK, Size = new Size(76, 28) };
-        cancel.Location = new Point(138, 148);
-        ok.Location = new Point(220, 148);
+        cancel.Location = new Point(138, 178);
+        ok.Location = new Point(220, 178);
         Controls.Add(cancel);
         Controls.Add(ok);
         AcceptButton = ok;
@@ -53,6 +56,7 @@ public sealed class AnnotationSettingsForm : Form
     {
         settings.MarkerColorArgb = _markerColorButton.BackColor.ToArgb();
         settings.MarkerSize = (int)_markerSizeInput.Value;
+        settings.NextMarkerNumber = (int)_nextMarkerNumberInput.Value;
         settings.PenColorArgb = _penColorButton.BackColor.ToArgb();
         settings.PenWidth = (float)_penWidthInput.Value;
     }

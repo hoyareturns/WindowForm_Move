@@ -22,6 +22,7 @@ It does not inject code into other programs. Instead, it runs lightweight overla
 - Supports marker/pen undo, stroke erasing, and clearing all annotations
 - Captures a user-dragged screen region with the visible annotations as a PNG file
 - Stores marker color/size and pen color/thickness settings for the next run
+- Starts marker numbering at 1, automatically advances the saved next number, and allows overriding it in settings
 - Collapses the annotation controls as a separate green `< >` tool set
 - The compact `ALL` button or tray menu applies monitor moves to all movable windows
 - Runs from the system tray

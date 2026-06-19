@@ -7,6 +7,7 @@ public sealed class AnnotationSettings
 {
     public int MarkerColorArgb { get; set; } = Color.FromArgb(0, 120, 215).ToArgb();
     public int MarkerSize { get; set; } = 30;
+    public int NextMarkerNumber { get; set; } = 1;
     public int PenColorArgb { get; set; } = Color.FromArgb(0, 170, 230).ToArgb();
     public float PenWidth { get; set; } = 3F;
 
