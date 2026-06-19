@@ -17,14 +17,15 @@ It does not inject code into other programs. Instead, it runs lightweight overla
 - If there is no monitor in that direction, nudges the window inside the virtual desktop
 - Keeps maximized windows maximized after moving
 - Provides a click-through crosshair guide that follows the mouse across the current monitor
-- Adds numbered screen markers and drag-to-place arrow memos without modifying the underlying program
+- Opens a frozen full-desktop presentation mode for numbered markers and drag-to-place arrow memos
+- Keeps annotation clicks completely separate from the underlying Excel, browser, and document windows
 - Supports editing existing memo boxes, annotation undo, erasing, and clearing all annotations
 - Captures a user-dragged screen region with the visible annotations as a PNG file
 - Saves captures automatically using the configured folder and `{date}`, `{time}`, or `{datetime}` filename pattern
 - Opens the capture folder after saving unless that folder is already open in Explorer
 - Stores marker color/size and arrow color/thickness settings for the next run
 - Starts marker numbering at 1, automatically advances the toolbar number, and allows manual toolbar input
-- Collapses the annotation controls as a separate green `< >` tool set
+- Uses a compact PicPick-style presentation toolbar over the frozen screen
 - The compact `ALL` button or tray menu applies monitor moves to all movable windows
 - Runs from the system tray
 - Tray menu supports show/hide, all-window mode, crosshair guide, and exit
@@ -47,9 +48,10 @@ Published executable:
 2. Small buttons appear near the top-right of normal running windows.
 3. Use a window's own overlay buttons to move that window.
 4. Use the crosshair button to toggle the mouse guide.
-5. Expand the first green `< >` set, choose the marker color/number, then use `①` for numbered markers, `↗` to drag an arrow and enter a memo, or `E` to erase one annotation. Click an existing memo box in arrow mode to edit it.
-6. Use `↶` to remove the latest annotation, `AC` to clear all, and the square capture button to drag and save a selected region. Press `Esc` to cancel capture.
-7. Open the annotation settings button to choose marker size, arrow appearance, capture folder, and filename pattern.
-8. Expand the second green `< >` set, type a layout name, then use `S`, `L`, or `D`.
-9. Turn on `ALL` from the button strip or `Move all windows` from the tray menu when needed.
-10. Use the tray icon menu to hide the buttons or exit the app.
+5. Expand the first green `< >` set, choose the marker color/number, then select `①` or `↗` to enter the frozen presentation mode.
+6. Use the presentation toolbar for markers, arrow memos, erasing, undo, clear-all, capture, and settings. Click an existing memo box in arrow mode to edit it; press `Esc` or `X` to exit.
+7. Use the square capture button to save a selected region; press `Esc` to cancel capture.
+8. Open settings to choose marker size, arrow appearance, capture folder, and filename pattern.
+9. Expand the second green `< >` set, type a layout name, then use `S`, `L`, or `D`.
+10. Turn on `ALL` from the button strip or `Move all windows` from the tray menu when needed.
+11. Use the tray icon menu to hide the buttons or exit the app.

@@ -15,10 +15,13 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
     private bool _crosshairEnabled;
     private bool _layoutControlsExpanded;
     private bool _annotationControlsExpanded;
+    private bool _presentationActive;
 
     public WindowMoveApplicationContext()
     {
         _annotationManager.ToolbarStateChanged += SyncOverlayToggleStates;
+        _annotationManager.PresentationStarted += BeginPresentation;
+        _annotationManager.PresentationEnded += EndPresentation;
         _notifyIcon = new NotifyIcon
         {
             Icon = SystemIcons.Application,
@@ -86,6 +89,16 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
 
     private void SyncOverlays()
     {
+        if (_presentationActive)
+        {
+            foreach (var overlay in _overlays.Values)
+            {
+                overlay.Hide();
+            }
+
+            return;
+        }
+
         var windows = WindowController.GetMovableWindows();
         var liveHandles = windows.Select(window => window.Handle).ToHashSet();
 
@@ -142,6 +155,21 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
         SyncOverlays();
     }
 
+    private void BeginPresentation()
+    {
+        _presentationActive = true;
+        foreach (var overlay in _overlays.Values)
+        {
+            overlay.Hide();
+        }
+    }
+
+    private void EndPresentation()
+    {
+        _presentationActive = false;
+        SyncOverlays();
+    }
+
     private void SetMoveAllWindows(bool enabled)
     {
         _moveAllWindows = enabled;
@@ -180,9 +208,13 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
 
     private void ToggleAnnotationTool(AnnotationTool tool)
     {
+        if (_crosshairEnabled)
+        {
+            SetCrosshairEnabled(false);
+        }
+
         _annotationManager.ToggleTool(tool);
         SyncOverlayToggleStates();
-        SyncOverlays();
     }
 
     private void CaptureSelectedRegion()
