@@ -10,14 +10,7 @@ public sealed class PresentationAnnotationForm : Form
     private readonly AnnotationSettings _settings;
     private readonly Func<string> _createCapturePath;
     private readonly List<AnnotationItem> _items = new();
-    private readonly Panel _toolWindow = new();
-    private readonly FlowLayoutPanel _toolRow = new();
-    private readonly ToolTip _toolTip = new() { ShowAlways = true, InitialDelay = 300 };
-    private readonly Button _markerColorButton;
-    private readonly NumericUpDown _markerNumberInput;
-    private readonly Button _markerButton;
-    private readonly Button _arrowButton;
-    private readonly Button _eraserButton;
+    private readonly Label _noticeLabel = new();
     private AnnotationTool _activeTool;
     private Point? _arrowStart;
     private Point _arrowPreviewEnd;
@@ -43,34 +36,28 @@ public sealed class PresentationAnnotationForm : Form
         DoubleBuffered = true;
         Bounds = virtualBounds;
 
-        _markerColorButton = CreateToolButton(string.Empty, 28, ChooseMarkerColor, "마커 색상");
-        _markerNumberInput = new NumericUpDown
-        {
-            Minimum = 1,
-            Maximum = 9999,
-            Value = Math.Clamp(settings.NextMarkerNumber, 1, 9999),
-            Size = new Size(52, 23),
-            Margin = new Padding(1, 2, 1, 1),
-            TextAlign = HorizontalAlignment.Center,
-            Font = new Font("Segoe UI", 8F),
-            BorderStyle = BorderStyle.FixedSingle
-        };
-        _markerNumberInput.ValueChanged += (_, _) =>
-        {
-            _settings.NextMarkerNumber = (int)_markerNumberInput.Value;
-            SettingsChanged?.Invoke();
-        };
-        _toolTip.SetToolTip(_markerNumberInput, "다음 마커 번호");
-
-        _markerButton = CreateToolButton("①", 28, () => SetTool(AnnotationTool.Marker), "번호 마커");
-        _arrowButton = CreateToolButton("↗", 28, () => SetTool(AnnotationTool.Arrow), "화살표와 메모");
-        _eraserButton = CreateToolButton("E", 28, () => SetTool(AnnotationTool.Eraser), "마커 또는 화살표 지우기");
-
-        BuildToolWindow();
+        _noticeLabel.Text = "마킹 중지를 원하시면 ESC 클릭";
+        _noticeLabel.AutoSize = false;
+        _noticeLabel.Size = new Size(230, 28);
+        _noticeLabel.BackColor = Color.FromArgb(28, 28, 28);
+        _noticeLabel.ForeColor = Color.White;
+        _noticeLabel.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+        _noticeLabel.TextAlign = ContentAlignment.MiddleCenter;
+        _noticeLabel.Visible = false;
+        Controls.Add(_noticeLabel);
     }
 
     public event Action<AnnotationTool>? ToolChanged;
     public event Action? SettingsChanged;
+
+    public void PositionNotice(Rectangle toolbarBounds)
+    {
+        var localX = toolbarBounds.Left - Left - _noticeLabel.Width - 6;
+        var localY = toolbarBounds.Top - Top;
+        _noticeLabel.Location = new Point(Math.Max(4, localX), Math.Max(4, localY));
+        _noticeLabel.Visible = true;
+        _noticeLabel.BringToFront();
+    }
 
     public void SetTool(AnnotationTool tool)
     {
@@ -78,24 +65,17 @@ public sealed class PresentationAnnotationForm : Form
         _activeTool = tool;
         Cursor = tool switch
         {
+            AnnotationTool.Dot => Cursors.Cross,
             AnnotationTool.Marker => Cursors.Cross,
             AnnotationTool.Arrow => Cursors.Cross,
             AnnotationTool.Eraser => Cursors.No,
             _ => Cursors.Default
         };
-        SyncToolButtons();
         ToolChanged?.Invoke(tool);
     }
 
     public void SyncSettings()
     {
-        _markerColorButton.BackColor = _settings.MarkerColor;
-        var number = Math.Clamp(_settings.NextMarkerNumber, 1, 9999);
-        if (_markerNumberInput.Value != number)
-        {
-            _markerNumberInput.Value = number;
-        }
-
         Invalidate();
     }
 
@@ -182,7 +162,6 @@ public sealed class PresentationAnnotationForm : Form
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
-        PositionToolWindow();
         Activate();
         Focus();
     }
@@ -197,13 +176,17 @@ public sealed class PresentationAnnotationForm : Form
     protected override void OnMouseDown(MouseEventArgs e)
     {
         base.OnMouseDown(e);
-        if (e.Button != MouseButtons.Left || _toolWindow.Bounds.Contains(e.Location))
+        if (e.Button != MouseButtons.Left)
         {
             return;
         }
 
         var location = PointToScreen(e.Location);
-        if (_activeTool == AnnotationTool.Marker)
+        if (_activeTool == AnnotationTool.Dot)
+        {
+            AddDot(location);
+        }
+        else if (_activeTool == AnnotationTool.Marker)
         {
             AddMarker(location);
         }
@@ -285,100 +268,10 @@ public sealed class PresentationAnnotationForm : Form
         if (disposing)
         {
             CancelCurrentGesture();
-            _toolTip.Dispose();
             _frozenScreen.Dispose();
         }
 
         base.Dispose(disposing);
-    }
-
-    private void BuildToolWindow()
-    {
-        _toolWindow.BackColor = Color.FromArgb(245, 245, 245);
-        _toolWindow.BorderStyle = BorderStyle.FixedSingle;
-        _toolWindow.Size = new Size(430, 54);
-
-        var title = new Label
-        {
-            Text = "프레젠테이션 도구",
-            AutoSize = false,
-            Location = new Point(6, 2),
-            Size = new Size(380, 18),
-            Font = new Font("Segoe UI", 9F),
-            ForeColor = Color.FromArgb(25, 90, 120)
-        };
-        _toolWindow.Controls.Add(title);
-
-        var closeButton = CreateToolButton("×", 28, Close, "프레젠테이션 모드 종료");
-        closeButton.Location = new Point(_toolWindow.Width - 30, 0);
-        closeButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        closeButton.Margin = Padding.Empty;
-        closeButton.Height = 20;
-        _toolWindow.Controls.Add(closeButton);
-
-        _toolRow.Location = new Point(2, 21);
-        _toolRow.Size = new Size(_toolWindow.Width - 4, 29);
-        _toolRow.FlowDirection = FlowDirection.LeftToRight;
-        _toolRow.WrapContents = false;
-        _toolRow.BackColor = Color.FromArgb(245, 245, 245);
-        _toolRow.Controls.Add(_markerColorButton);
-        _toolRow.Controls.Add(_markerNumberInput);
-        _toolRow.Controls.Add(_markerButton);
-        _toolRow.Controls.Add(_arrowButton);
-        _toolRow.Controls.Add(_eraserButton);
-        _toolRow.Controls.Add(CreateToolButton("↶", 28, UndoLast, "마지막 작업 되돌리기"));
-        _toolRow.Controls.Add(CreateToolButton("AC", 34, ClearAll, "모든 주석 지우기"));
-        _toolRow.Controls.Add(CreateToolButton("□", 28, CaptureSelectedRegion, "영역 캡처"));
-        _toolRow.Controls.Add(CreateToolButton("⚙", 28, ShowAnnotationSettings, "설정"));
-        _toolWindow.Controls.Add(_toolRow);
-        Controls.Add(_toolWindow);
-
-        SyncSettings();
-        SyncToolButtons();
-    }
-
-    private Button CreateToolButton(string text, int width, Action action, string toolTip)
-    {
-        var button = new Button
-        {
-            Text = text,
-            Size = new Size(width, 24),
-            Margin = new Padding(1, 1, 1, 1),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.FromArgb(245, 245, 245),
-            ForeColor = Color.FromArgb(28, 28, 28),
-            Font = new Font("Segoe UI Symbol", 9F, FontStyle.Bold),
-            TabStop = false
-        };
-        button.FlatAppearance.BorderColor = Color.FromArgb(190, 190, 190);
-        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 232, 242);
-        button.Click += (_, _) => action();
-        _toolTip.SetToolTip(button, toolTip);
-        return button;
-    }
-
-    private void PositionToolWindow()
-    {
-        var primary = Screen.PrimaryScreen?.Bounds ?? _virtualBounds;
-        var localX = primary.Left - Left + (primary.Width - _toolWindow.Width) / 2;
-        var localY = primary.Top - Top + 8;
-        _toolWindow.Location = new Point(localX, localY);
-        _toolWindow.BringToFront();
-    }
-
-    private void SyncToolButtons()
-    {
-        foreach (var pair in new[]
-        {
-            (_markerButton, AnnotationTool.Marker),
-            (_arrowButton, AnnotationTool.Arrow),
-            (_eraserButton, AnnotationTool.Eraser)
-        })
-        {
-            pair.Item1.BackColor = _activeTool == pair.Item2
-                ? Color.FromArgb(190, 218, 238)
-                : Color.FromArgb(245, 245, 245);
-        }
     }
 
     private void AddMarker(Point location)
@@ -387,6 +280,12 @@ public sealed class PresentationAnnotationForm : Form
         _settings.NextMarkerNumber = Math.Min(9999, _settings.NextMarkerNumber + 1);
         SyncSettings();
         SettingsChanged?.Invoke();
+        Invalidate();
+    }
+
+    private void AddDot(Point location)
+    {
+        _items.Add(new ScreenDot(location));
         Invalidate();
     }
 
@@ -467,6 +366,12 @@ public sealed class PresentationAnnotationForm : Form
             return DistanceSquared(marker.Location, location) <= radius * radius;
         }
 
+        if (item is ScreenDot dot)
+        {
+            var radius = _settings.MarkerSize / 2F + 8F;
+            return DistanceSquared(dot.Location, location) <= radius * radius;
+        }
+
         if (item is not AnnotationArrow arrow)
         {
             return false;
@@ -485,6 +390,10 @@ public sealed class PresentationAnnotationForm : Form
             if (item is ScreenMarker marker)
             {
                 DrawMarker(graphics, marker);
+            }
+            else if (item is ScreenDot dot)
+            {
+                DrawDot(graphics, dot);
             }
             else if (item is AnnotationArrow arrow)
             {
@@ -508,6 +417,15 @@ public sealed class PresentationAnnotationForm : Form
             circle,
             Color.White,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+    }
+
+    private void DrawDot(Graphics graphics, ScreenDot dot)
+    {
+        var center = ToLocal(dot.Location);
+        var diameter = _settings.MarkerSize;
+        var circle = new Rectangle(center.X - diameter / 2, center.Y - diameter / 2, diameter, diameter);
+        using var brush = new SolidBrush(_settings.MarkerColor);
+        graphics.FillEllipse(brush, circle);
     }
 
     private void DrawArrow(Graphics graphics, AnnotationArrow arrow)

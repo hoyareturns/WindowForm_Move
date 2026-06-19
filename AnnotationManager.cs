@@ -17,7 +17,13 @@ public sealed class AnnotationManager : IDisposable
     public int NextMarkerNumber => _settings.NextMarkerNumber;
     public event Action? ToolbarStateChanged;
     public event Action? PresentationStarted;
+    public event Action? PresentationReady;
     public event Action? PresentationEnded;
+
+    public void PositionPresentationNotice(Rectangle toolbarBounds)
+    {
+        _session?.PositionNotice(toolbarBounds);
+    }
 
     public void ToggleTool(AnnotationTool tool)
     {
@@ -149,6 +155,7 @@ public sealed class AnnotationManager : IDisposable
             _session.SetTool(initialTool);
             _session.Show();
             _session.Activate();
+            PresentationReady?.Invoke();
             ToolbarStateChanged?.Invoke();
         }
         catch (Exception exception)

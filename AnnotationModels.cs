@@ -4,6 +4,8 @@ public abstract record AnnotationItem;
 
 public sealed record ScreenMarker(int Number, Point Location) : AnnotationItem;
 
+public sealed record ScreenDot(Point Location) : AnnotationItem;
+
 public sealed record AnnotationArrow(Point Start, Point End, Color Color, float Width) : AnnotationItem
 {
     public string Text { get; set; } = string.Empty;
@@ -12,6 +14,7 @@ public sealed record AnnotationArrow(Point Start, Point End, Color Color, float 
 public enum AnnotationTool
 {
     None,
+    Dot,
     Marker,
     Arrow,
     Eraser

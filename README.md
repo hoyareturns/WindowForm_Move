@@ -17,7 +17,7 @@ It does not inject code into other programs. Instead, it runs lightweight overla
 - If there is no monitor in that direction, nudges the window inside the virtual desktop
 - Keeps maximized windows maximized after moving
 - Provides a click-through crosshair guide that follows the mouse across the current monitor
-- Opens a frozen full-desktop presentation mode for numbered markers and drag-to-place arrow memos
+- Opens a frozen full-desktop presentation mode for plain dots, numbered markers, and drag-to-place arrow memos
 - Keeps annotation clicks completely separate from the underlying Excel, browser, and document windows
 - Supports editing existing memo boxes, annotation undo, erasing, and clearing all annotations
 - Captures a user-dragged screen region with the visible annotations as a PNG file
@@ -25,7 +25,7 @@ It does not inject code into other programs. Instead, it runs lightweight overla
 - Opens the capture folder after saving unless that folder is already open in Explorer
 - Stores marker color/size and arrow color/thickness settings for the next run
 - Starts marker numbering at 1, automatically advances the toolbar number, and allows manual toolbar input
-- Uses a compact PicPick-style presentation toolbar over the frozen screen
+- Keeps the initiating WindowForm_Move annotation button set over the frozen screen instead of opening a second toolbar
 - The compact `ALL` button or tray menu applies monitor moves to all movable windows
 - Runs from the system tray
 - Tray menu supports show/hide, all-window mode, crosshair guide, and exit
@@ -48,8 +48,8 @@ Published executable:
 2. Small buttons appear near the top-right of normal running windows.
 3. Use a window's own overlay buttons to move that window.
 4. Use the crosshair button to toggle the mouse guide.
-5. Expand the first green `< >` set, choose the marker color/number, then select `①` or `↗` to enter the frozen presentation mode.
-6. Use the presentation toolbar for markers, arrow memos, erasing, undo, clear-all, capture, and settings. Click an existing memo box in arrow mode to edit it; press `Esc` or `X` to exit.
+5. Expand the first green `< >` set, choose the marker color/number, then select `●`, `①`, or `↗` to enter the frozen presentation mode. `●` adds a point without changing the marker number.
+6. Continue using the same WindowForm_Move button set for markers, arrow memos, erasing, undo, clear-all, capture, and settings. A notice appears to its left; press `Esc` to exit.
 7. Use the square capture button to save a selected region; press `Esc` to cancel capture.
 8. Open settings to choose marker size, arrow appearance, capture folder, and filename pattern.
 9. Expand the second green `< >` set, type a layout name, then use `S`, `L`, or `D`.

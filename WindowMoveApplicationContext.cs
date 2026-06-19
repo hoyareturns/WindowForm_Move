@@ -16,11 +16,13 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
     private bool _layoutControlsExpanded;
     private bool _annotationControlsExpanded;
     private bool _presentationActive;
+    private IntPtr _presentationHostHandle;
 
     public WindowMoveApplicationContext()
     {
         _annotationManager.ToolbarStateChanged += SyncOverlayToggleStates;
         _annotationManager.PresentationStarted += BeginPresentation;
+        _annotationManager.PresentationReady += ShowPresentationToolbar;
         _annotationManager.PresentationEnded += EndPresentation;
         _notifyIcon = new NotifyIcon
         {
@@ -91,9 +93,12 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
     {
         if (_presentationActive)
         {
-            foreach (var overlay in _overlays.Values)
+            foreach (var pair in _overlays)
             {
-                overlay.Hide();
+                if (pair.Key != _presentationHostHandle)
+                {
+                    pair.Value.Hide();
+                }
             }
 
             return;
@@ -119,14 +124,14 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
                     () => _layoutControlsExpanded,
                     ToggleLayoutControls,
                     () => _annotationManager.ActiveTool,
-                    ToggleAnnotationTool,
+                    tool => ToggleAnnotationTool(window.Handle, tool),
                     () => _annotationManager.MarkerColor,
                     _annotationManager.ChooseMarkerColor,
                     () => _annotationManager.NextMarkerNumber,
                     _annotationManager.SetNextMarkerNumber,
                     _annotationManager.UndoLast,
                     _annotationManager.ClearAll,
-                    CaptureSelectedRegion,
+                    () => CaptureSelectedRegion(window.Handle),
                     _annotationManager.ShowSettings,
                     () => _annotationControlsExpanded,
                     ToggleAnnotationControls,
@@ -166,8 +171,26 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
 
     private void EndPresentation()
     {
+        foreach (var overlay in _overlays.Values)
+        {
+            overlay.EndPresentationMode();
+        }
+
         _presentationActive = false;
+        _presentationHostHandle = IntPtr.Zero;
         SyncOverlays();
+    }
+
+    private void ShowPresentationToolbar()
+    {
+        if (!_overlays.TryGetValue(_presentationHostHandle, out var host))
+        {
+            return;
+        }
+
+        host.SyncToggleStates();
+        host.ShowForPresentation();
+        _annotationManager.PositionPresentationNotice(host.Bounds);
     }
 
     private void SetMoveAllWindows(bool enabled)
@@ -206,8 +229,10 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
         SyncOverlays();
     }
 
-    private void ToggleAnnotationTool(AnnotationTool tool)
+    private void ToggleAnnotationTool(IntPtr hostHandle, AnnotationTool tool)
     {
+        _presentationHostHandle = hostHandle;
+        _annotationControlsExpanded = true;
         if (_crosshairEnabled)
         {
             SetCrosshairEnabled(false);
@@ -219,21 +244,14 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
 
     private void CaptureSelectedRegion()
     {
-        var overlaysWereVisible = _buttonsVisible;
-        foreach (var overlay in _overlays.Values)
-        {
-            overlay.Hide();
-        }
-
-        Application.DoEvents();
         _annotationManager.CaptureSelectedRegion();
-
-        if (overlaysWereVisible)
-        {
-            SyncOverlays();
-        }
-
         SyncOverlayToggleStates();
+    }
+
+    private void CaptureSelectedRegion(IntPtr hostHandle)
+    {
+        _presentationHostHandle = hostHandle;
+        CaptureSelectedRegion();
     }
 
     private void SetCrosshairEnabled(bool enabled)

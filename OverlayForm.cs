@@ -4,7 +4,8 @@ public sealed class OverlayForm : Form
 {
     private const int CollapsedWidth = 536;
     private const int LayoutExpandedAddition = 112;
-    private const int AnnotationExpandedAddition = 260;
+    private const int AnnotationExpandedAddition = 286;
+    private const int PresentationWidth = 338;
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     private const int WS_EX_TOPMOST = 0x00000008;
     private const int WM_MOUSEACTIVATE = 0x0021;
@@ -37,6 +38,9 @@ public sealed class OverlayForm : Form
     private readonly ToolTip _toolTip = new();
     private readonly List<Control> _layoutControls = new();
     private readonly List<Control> _annotationControls = new();
+    private readonly HashSet<Control> _presentationControls = new();
+    private FlowLayoutPanel? _buttonPanel;
+    private bool _presentationMode;
     private Button? _allButton;
     private Button? _crosshairButton;
     private Button? _layoutLeftToggleButton;
@@ -44,6 +48,7 @@ public sealed class OverlayForm : Form
     private Button? _annotationLeftToggleButton;
     private Button? _annotationRightToggleButton;
     private Button? _markerButton;
+    private Button? _dotButton;
     private Button? _arrowMemoButton;
     private Button? _eraserButton;
     private Button? _markerColorButton;
@@ -198,6 +203,40 @@ public sealed class OverlayForm : Form
         return true;
     }
 
+    public void ShowForPresentation()
+    {
+        _presentationMode = true;
+        SyncToggleStates();
+        ApplyPresentationVisibility();
+        var primary = Screen.PrimaryScreen?.Bounds ?? SystemInformation.VirtualScreen;
+        SetBounds(primary.Right - Width - 4, primary.Top + 5, Width, Height);
+        if (!Visible)
+        {
+            Show();
+        }
+
+        BringToFront();
+    }
+
+    public void EndPresentationMode()
+    {
+        if (!_presentationMode)
+        {
+            return;
+        }
+
+        _presentationMode = false;
+        if (_buttonPanel is not null)
+        {
+            foreach (Control control in _buttonPanel.Controls)
+            {
+                control.Visible = true;
+            }
+        }
+
+        SyncToggleStates();
+    }
+
     public void SyncToggleStates()
     {
         if (_allButton is not null)
@@ -238,6 +277,13 @@ public sealed class OverlayForm : Form
                 : Color.FromArgb(45, 45, 45);
         }
 
+        if (_dotButton is not null)
+        {
+            _dotButton.BackColor = _getAnnotationTool() == AnnotationTool.Dot
+                ? Color.FromArgb(0, 105, 145)
+                : Color.FromArgb(45, 45, 45);
+        }
+
         if (_arrowMemoButton is not null)
         {
             _arrowMemoButton.BackColor = _getAnnotationTool() == AnnotationTool.Arrow
@@ -254,6 +300,10 @@ public sealed class OverlayForm : Form
 
         SyncLayoutControlsVisibility();
         SyncAnnotationControlsVisibility();
+        if (_presentationMode)
+        {
+            ApplyPresentationVisibility();
+        }
     }
 
     public void RefreshLayoutNames(string? selectedName)
@@ -279,6 +329,7 @@ public sealed class OverlayForm : Form
             Margin = Padding.Empty,
             Padding = Padding.Empty
         };
+        _buttonPanel = panel;
 
         _crosshairButton = CreateWindowIconButton(WindowControlIcon.Crosshair, _toggleCrosshair, false);
         _toolTip.SetToolTip(_crosshairButton, "십자선 가이드 켜기/끄기");
@@ -286,6 +337,7 @@ public sealed class OverlayForm : Form
 
         _annotationLeftToggleButton = CreateSetToggleButton(pointsRight: false, _toggleAnnotationControls);
         panel.Controls.Add(_annotationLeftToggleButton);
+        _presentationControls.Add(_annotationLeftToggleButton);
 
         _markerColorButton = CreateFlatButton(string.Empty, 24);
         _markerColorButton.FlatAppearance.BorderColor = Color.White;
@@ -307,6 +359,10 @@ public sealed class OverlayForm : Form
         _markerNumberInput.ValueChanged += (_, _) => _setNextMarkerNumber((int)_markerNumberInput.Value);
         AddAnnotationControl(panel, _markerNumberInput, "다음 마커 번호 입력 (마킹 후 자동 증가)");
 
+        _dotButton = CreateFlatButton("●", 24);
+        _dotButton.Click += (_, _) => _toggleAnnotationTool(AnnotationTool.Dot);
+        AddAnnotationControl(panel, _dotButton, "번호 없는 원형 포인트");
+
         _markerButton = CreateFlatButton("①", 24);
         _markerButton.Click += (_, _) => _toggleAnnotationTool(AnnotationTool.Marker);
         AddAnnotationControl(panel, _markerButton, "번호 마커 찍기");
@@ -326,6 +382,7 @@ public sealed class OverlayForm : Form
 
         _annotationRightToggleButton = CreateSetToggleButton(pointsRight: true, _toggleAnnotationControls);
         panel.Controls.Add(_annotationRightToggleButton);
+        _presentationControls.Add(_annotationRightToggleButton);
 
         _layoutLeftToggleButton = CreateSetToggleButton(pointsRight: false, _toggleLayoutControls);
         panel.Controls.Add(_layoutLeftToggleButton);
@@ -433,6 +490,7 @@ public sealed class OverlayForm : Form
     {
         panel.Controls.Add(control);
         _annotationControls.Add(control);
+        _presentationControls.Add(control);
         _toolTip.SetToolTip(control, toolTip);
     }
 
@@ -469,6 +527,26 @@ public sealed class OverlayForm : Form
         Width = CollapsedWidth
             + (_getLayoutControlsExpanded() ? LayoutExpandedAddition : 0)
             + (_getAnnotationControlsExpanded() ? AnnotationExpandedAddition : 0);
+    }
+
+    private void ApplyPresentationVisibility()
+    {
+        if (_buttonPanel is null)
+        {
+            return;
+        }
+
+        foreach (Control control in _buttonPanel.Controls)
+        {
+            control.Visible = _presentationControls.Contains(control);
+        }
+
+        foreach (var control in _annotationControls)
+        {
+            control.Visible = true;
+        }
+
+        Width = PresentationWidth;
     }
 
     private Button CreateMoveButton(WindowControlIcon icon, MoveDirection direction)
