@@ -2,8 +2,9 @@ namespace WindowForm_Move;
 
 public sealed class OverlayForm : Form
 {
-    private const int CollapsedWidth = 488;
-    private const int ExpandedWidth = 626;
+    private const int CollapsedWidth = 536;
+    private const int LayoutExpandedAddition = 138;
+    private const int AnnotationExpandedAddition = 180;
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     private const int WS_EX_TOPMOST = 0x00000008;
     private const int WM_MOUSEACTIVATE = 0x0021;
@@ -21,15 +22,29 @@ public sealed class OverlayForm : Form
     private readonly Action _toggleLaunchMissingPrograms;
     private readonly Func<bool> _getLayoutControlsExpanded;
     private readonly Action _toggleLayoutControls;
+    private readonly Func<AnnotationTool> _getAnnotationTool;
+    private readonly Action<AnnotationTool> _toggleAnnotationTool;
+    private readonly Action _undoAnnotation;
+    private readonly Action _clearAnnotations;
+    private readonly Action _captureSelectedRegion;
+    private readonly Action _showAnnotationSettings;
+    private readonly Func<bool> _getAnnotationControlsExpanded;
+    private readonly Action _toggleAnnotationControls;
     private readonly Action _exitRequested;
     private readonly ComboBox _layoutCombo = new();
     private readonly ToolTip _toolTip = new();
     private readonly List<Control> _layoutControls = new();
+    private readonly List<Control> _annotationControls = new();
     private Button? _allButton;
     private Button? _crosshairButton;
     private Button? _launchMissingButton;
     private Button? _layoutLeftToggleButton;
     private Button? _layoutRightToggleButton;
+    private Button? _annotationLeftToggleButton;
+    private Button? _annotationRightToggleButton;
+    private Button? _markerButton;
+    private Button? _penButton;
+    private Button? _eraserButton;
 
     public IntPtr TargetWindow { get; }
 
@@ -59,6 +74,14 @@ public sealed class OverlayForm : Form
         Action toggleLaunchMissingPrograms,
         Func<bool> getLayoutControlsExpanded,
         Action toggleLayoutControls,
+        Func<AnnotationTool> getAnnotationTool,
+        Action<AnnotationTool> toggleAnnotationTool,
+        Action undoAnnotation,
+        Action clearAnnotations,
+        Action captureSelectedRegion,
+        Action showAnnotationSettings,
+        Func<bool> getAnnotationControlsExpanded,
+        Action toggleAnnotationControls,
         Action exitRequested)
     {
         TargetWindow = targetWindow;
@@ -74,6 +97,14 @@ public sealed class OverlayForm : Form
         _toggleLaunchMissingPrograms = toggleLaunchMissingPrograms;
         _getLayoutControlsExpanded = getLayoutControlsExpanded;
         _toggleLayoutControls = toggleLayoutControls;
+        _getAnnotationTool = getAnnotationTool;
+        _toggleAnnotationTool = toggleAnnotationTool;
+        _undoAnnotation = undoAnnotation;
+        _clearAnnotations = clearAnnotations;
+        _captureSelectedRegion = captureSelectedRegion;
+        _showAnnotationSettings = showAnnotationSettings;
+        _getAnnotationControlsExpanded = getAnnotationControlsExpanded;
+        _toggleAnnotationControls = toggleAnnotationControls;
         _exitRequested = exitRequested;
 
         FormBorderStyle = FormBorderStyle.None;
@@ -184,7 +215,29 @@ public sealed class OverlayForm : Form
             _launchMissingButton.Invalidate();
         }
 
+        if (_markerButton is not null)
+        {
+            _markerButton.BackColor = _getAnnotationTool() == AnnotationTool.Marker
+                ? Color.FromArgb(0, 105, 145)
+                : Color.FromArgb(45, 45, 45);
+        }
+
+        if (_penButton is not null)
+        {
+            _penButton.BackColor = _getAnnotationTool() == AnnotationTool.Pen
+                ? Color.FromArgb(0, 105, 145)
+                : Color.FromArgb(45, 45, 45);
+        }
+
+        if (_eraserButton is not null)
+        {
+            _eraserButton.BackColor = _getAnnotationTool() == AnnotationTool.Eraser
+                ? Color.FromArgb(0, 105, 145)
+                : Color.FromArgb(45, 45, 45);
+        }
+
         SyncLayoutControlsVisibility();
+        SyncAnnotationControlsVisibility();
     }
 
     public void RefreshLayoutNames(string? selectedName)
@@ -215,7 +268,30 @@ public sealed class OverlayForm : Form
         _toolTip.SetToolTip(_crosshairButton, "십자선 가이드 켜기/끄기");
         panel.Controls.Add(_crosshairButton);
 
-        _layoutLeftToggleButton = CreateLayoutToggleButton(pointsRight: false);
+        _annotationLeftToggleButton = CreateSetToggleButton(pointsRight: false, _toggleAnnotationControls);
+        panel.Controls.Add(_annotationLeftToggleButton);
+
+        _markerButton = CreateFlatButton("M", 22);
+        _markerButton.Click += (_, _) => _toggleAnnotationTool(AnnotationTool.Marker);
+        AddAnnotationControl(panel, _markerButton, "번호 마커 찍기");
+
+        _penButton = CreateFlatButton("P", 22);
+        _penButton.Click += (_, _) => _toggleAnnotationTool(AnnotationTool.Pen);
+        AddAnnotationControl(panel, _penButton, "화면에 자유선 그리기 (Pen)");
+
+        _eraserButton = CreateFlatButton("E", 22);
+        _eraserButton.Click += (_, _) => _toggleAnnotationTool(AnnotationTool.Eraser);
+        AddAnnotationControl(panel, _eraserButton, "마커 또는 펜 한 획 지우기 (Eraser)");
+
+        AddAnnotationControl(panel, CreateCommandButton("↶", 24, _undoAnnotation), "마지막 마커 또는 선 실행취소");
+        AddAnnotationControl(panel, CreateCommandButton("AC", 28, _clearAnnotations), "모든 마커와 선 지우기");
+        AddAnnotationControl(panel, CreateWindowIconButton(WindowControlIcon.Capture, _captureSelectedRegion, false, 24), "드래그한 영역을 PNG로 저장");
+        AddAnnotationControl(panel, CreateWindowIconButton(WindowControlIcon.Settings, _showAnnotationSettings, false, 24), "마커와 펜 색상·두께 설정");
+
+        _annotationRightToggleButton = CreateSetToggleButton(pointsRight: true, _toggleAnnotationControls);
+        panel.Controls.Add(_annotationRightToggleButton);
+
+        _layoutLeftToggleButton = CreateSetToggleButton(pointsRight: false, _toggleLayoutControls);
         panel.Controls.Add(_layoutLeftToggleButton);
 
         _layoutCombo.Size = new Size(50, 23);
@@ -239,7 +315,7 @@ public sealed class OverlayForm : Form
         panel.Controls.Add(_launchMissingButton);
         _layoutControls.Add(_launchMissingButton);
 
-        _layoutRightToggleButton = CreateLayoutToggleButton(pointsRight: true);
+        _layoutRightToggleButton = CreateSetToggleButton(pointsRight: true, _toggleLayoutControls);
         panel.Controls.Add(_layoutRightToggleButton);
 
         panel.Controls.Add(CreateMoveButton(WindowControlIcon.ArrowLeft, MoveDirection.Left));
@@ -292,12 +368,12 @@ public sealed class OverlayForm : Form
         _layoutControls.Add(control);
     }
 
-    private Button CreateLayoutToggleButton(bool pointsRight)
+    private Button CreateSetToggleButton(bool pointsRight, Action toggleAction)
     {
         var button = CreateFlatButton(string.Empty, 22);
         button.FlatAppearance.BorderColor = Color.FromArgb(72, 171, 124);
         button.Paint += (_, e) => DrawLayoutToggleIcon(e.Graphics, button.ClientRectangle, pointsRight);
-        button.Click += (_, _) => _toggleLayoutControls();
+        button.Click += (_, _) => toggleAction();
         return button;
     }
 
@@ -309,7 +385,7 @@ public sealed class OverlayForm : Form
             control.Visible = expanded;
         }
 
-        Width = expanded ? ExpandedWidth : CollapsedWidth;
+        UpdateToolbarWidth();
         foreach (var toggleButton in new[] { _layoutLeftToggleButton, _layoutRightToggleButton })
         {
             if (toggleButton is null)
@@ -322,6 +398,48 @@ public sealed class OverlayForm : Form
                 expanded ? "창 위치 저장 세트 숨기기" : "창 위치 저장 세트 펼치기");
             toggleButton.Invalidate();
         }
+    }
+
+    private void AddAnnotationControl(FlowLayoutPanel panel, Control control, string toolTip)
+    {
+        panel.Controls.Add(control);
+        _annotationControls.Add(control);
+        _toolTip.SetToolTip(control, toolTip);
+    }
+
+    private Button CreateCommandButton(string text, int width, Action action)
+    {
+        var button = CreateFlatButton(text, width);
+        button.Click += (_, _) => action();
+        return button;
+    }
+
+    private void SyncAnnotationControlsVisibility()
+    {
+        var expanded = _getAnnotationControlsExpanded();
+        foreach (var control in _annotationControls)
+        {
+            control.Visible = expanded;
+        }
+
+        UpdateToolbarWidth();
+        foreach (var toggleButton in new[] { _annotationLeftToggleButton, _annotationRightToggleButton })
+        {
+            if (toggleButton is null)
+            {
+                continue;
+            }
+
+            _toolTip.SetToolTip(toggleButton, expanded ? "마킹 도구 세트 숨기기" : "마킹 도구 세트 펼치기");
+            toggleButton.Invalidate();
+        }
+    }
+
+    private void UpdateToolbarWidth()
+    {
+        Width = CollapsedWidth
+            + (_getLayoutControlsExpanded() ? LayoutExpandedAddition : 0)
+            + (_getAnnotationControlsExpanded() ? AnnotationExpandedAddition : 0);
     }
 
     private Button CreateMoveButton(WindowControlIcon icon, MoveDirection direction)
@@ -440,6 +558,15 @@ public sealed class OverlayForm : Form
                 graphics.DrawLine(pen, bounds.Width / 2, 5, bounds.Width / 2, 18);
                 graphics.DrawLine(pen, 6, 11, bounds.Width - 6, 11);
                 break;
+            case WindowControlIcon.Capture:
+                graphics.DrawRectangle(pen, 5, 6, bounds.Width - 11, 11);
+                graphics.DrawLine(pen, 8, 4, 13, 4);
+                graphics.DrawLine(pen, 8, 4, 6, 7);
+                break;
+            case WindowControlIcon.Settings:
+                graphics.DrawEllipse(pen, bounds.Width / 2 - 5, 6, 10, 10);
+                graphics.DrawEllipse(pen, bounds.Width / 2 - 1, 10, 2, 2);
+                break;
             case WindowControlIcon.HalfLeft:
             case WindowControlIcon.HalfRight:
             case WindowControlIcon.HalfTop:
@@ -533,7 +660,9 @@ public sealed class OverlayForm : Form
         ArrowUpLeft,
         ArrowUpRight,
         ArrowDown,
-        Crosshair
+        Crosshair,
+        Capture,
+        Settings
     }
 
     private void MoveTargets(MoveDirection direction)

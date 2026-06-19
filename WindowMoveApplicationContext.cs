@@ -5,6 +5,7 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
     private readonly Dictionary<IntPtr, OverlayForm> _overlays = new();
     private readonly System.Windows.Forms.Timer _scanTimer = new();
     private readonly CrosshairOverlayForm _crosshairOverlay = new();
+    private readonly AnnotationManager _annotationManager = new();
     private readonly WindowLayoutStore _layoutStore = new();
     private readonly NotifyIcon _notifyIcon;
     private ToolStripMenuItem? _moveAllMenuItem;
@@ -14,6 +15,7 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
     private bool _crosshairEnabled;
     private bool _launchMissingPrograms;
     private bool _layoutControlsExpanded;
+    private bool _annotationControlsExpanded;
 
     public WindowMoveApplicationContext()
     {
@@ -41,6 +43,7 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
             _notifyIcon.Dispose();
             _scanTimer.Dispose();
             _crosshairOverlay.Dispose();
+            _annotationManager.Dispose();
             foreach (var overlay in _overlays.Values)
             {
                 overlay.Dispose();
@@ -104,6 +107,14 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
                     ToggleLaunchMissingPrograms,
                     () => _layoutControlsExpanded,
                     ToggleLayoutControls,
+                    () => _annotationManager.ActiveTool,
+                    ToggleAnnotationTool,
+                    _annotationManager.UndoLast,
+                    _annotationManager.ClearAll,
+                    CaptureSelectedRegion,
+                    _annotationManager.ShowSettings,
+                    () => _annotationControlsExpanded,
+                    ToggleAnnotationControls,
                     ExitThread);
             }
         }
@@ -162,6 +173,39 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
         _layoutControlsExpanded = !_layoutControlsExpanded;
         SyncOverlayToggleStates();
         SyncOverlays();
+    }
+
+    private void ToggleAnnotationControls()
+    {
+        _annotationControlsExpanded = !_annotationControlsExpanded;
+        SyncOverlayToggleStates();
+        SyncOverlays();
+    }
+
+    private void ToggleAnnotationTool(AnnotationTool tool)
+    {
+        _annotationManager.ToggleTool(tool);
+        SyncOverlayToggleStates();
+        SyncOverlays();
+    }
+
+    private void CaptureSelectedRegion()
+    {
+        var overlaysWereVisible = _buttonsVisible;
+        foreach (var overlay in _overlays.Values)
+        {
+            overlay.Hide();
+        }
+
+        Application.DoEvents();
+        _annotationManager.CaptureSelectedRegion();
+
+        if (overlaysWereVisible)
+        {
+            SyncOverlays();
+        }
+
+        SyncOverlayToggleStates();
     }
 
     private void SetCrosshairEnabled(bool enabled)
