@@ -73,28 +73,36 @@ public sealed class AnnotationManager : IDisposable
                 CopyPixelOperation.SourceCopy | CopyPixelOperation.CaptureBlt);
         }
 
-        using var selectionImage = (Bitmap)source.Clone();
-        using var selector = new CaptureSelectionForm(selectionImage, virtualBounds);
-        if (selector.ShowDialog() != DialogResult.OK)
+        _overlay?.Hide();
+        try
         {
-            return;
+            using var selectionImage = (Bitmap)source.Clone();
+            using var selector = new CaptureSelectionForm(selectionImage, virtualBounds);
+            if (selector.ShowDialog() != DialogResult.OK)
+            {
+                return;
+            }
+
+            var selected = selector.SelectedRegion;
+            using var result = source.Clone(selected, PixelFormat.Format32bppArgb);
+            using var saveDialog = new SaveFileDialog
+            {
+                Title = "마킹 화면 저장",
+                Filter = "PNG 이미지 (*.png)|*.png",
+                DefaultExt = "png",
+                AddExtension = true,
+                InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
+                FileName = $"WindowForm_Move_{DateTime.Now:yyyyMMdd_HHmmss}.png"
+            };
+
+            if (saveDialog.ShowDialog() == DialogResult.OK)
+            {
+                result.Save(saveDialog.FileName, ImageFormat.Png);
+            }
         }
-
-        var selected = selector.SelectedRegion;
-        using var result = source.Clone(selected, PixelFormat.Format32bppArgb);
-        using var saveDialog = new SaveFileDialog
+        finally
         {
-            Title = "마킹 화면 저장",
-            Filter = "PNG 이미지 (*.png)|*.png",
-            DefaultExt = "png",
-            AddExtension = true,
-            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
-            FileName = $"WindowForm_Move_{DateTime.Now:yyyyMMdd_HHmmss}.png"
-        };
-
-        if (saveDialog.ShowDialog() == DialogResult.OK)
-        {
-            result.Save(saveDialog.FileName, ImageFormat.Png);
+            RefreshOverlays();
         }
     }
 
@@ -118,15 +126,21 @@ public sealed class AnnotationManager : IDisposable
     {
         var previousTool = ActiveTool;
         SetActiveTool(AnnotationTool.None);
-        using var form = new AnnotationSettingsForm(_settings);
-        if (form.ShowDialog() == DialogResult.OK)
+        _overlay?.Hide();
+        try
         {
-            form.ApplyTo(_settings);
-            _settings.Save();
-            RefreshOverlays();
+            using var form = new AnnotationSettingsForm(_settings);
+            if (form.ShowDialog() == DialogResult.OK)
+            {
+                form.ApplyTo(_settings);
+                _settings.Save();
+            }
         }
-
-        SetActiveTool(previousTool);
+        finally
+        {
+            RefreshOverlays();
+            SetActiveTool(previousTool);
+        }
     }
 
     private IReadOnlyList<AnnotationItem> GetItems()

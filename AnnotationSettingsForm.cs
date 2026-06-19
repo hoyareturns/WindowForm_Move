@@ -16,6 +16,7 @@ public sealed class AnnotationSettingsForm : Form
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
+        TopMost = true;
         ClientSize = new Size(310, 220);
         Font = new Font("Segoe UI", 9F);
 
@@ -67,7 +68,8 @@ public sealed class AnnotationSettingsForm : Form
         button.Click += (_, _) =>
         {
             using var dialog = new ColorDialog { Color = button.BackColor, FullOpen = true };
-            if (dialog.ShowDialog() == DialogResult.OK)
+            var owner = button.FindForm();
+            if (dialog.ShowDialog(owner) == DialogResult.OK)
             {
                 button.BackColor = dialog.Color;
             }
