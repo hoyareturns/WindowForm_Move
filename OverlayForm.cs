@@ -277,7 +277,7 @@ public sealed class OverlayForm : Form
 
         _arrowMemoButton = CreateFlatButton("A", 22);
         _arrowMemoButton.Click += (_, _) => _toggleAnnotationTool(AnnotationTool.Arrow);
-        AddAnnotationControl(panel, _arrowMemoButton, "두 점으로 화살표+메모 추가, 기존 메모 클릭 시 수정");
+        AddAnnotationControl(panel, _arrowMemoButton, "드래그로 화살표+메모 추가, 기존 메모 클릭 시 수정");
 
         _eraserButton = CreateFlatButton("E", 22);
         _eraserButton.Click += (_, _) => _toggleAnnotationTool(AnnotationTool.Eraser);

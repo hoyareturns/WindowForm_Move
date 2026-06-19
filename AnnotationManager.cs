@@ -8,13 +8,16 @@ public sealed class AnnotationManager : IDisposable
     private AnnotationOverlayForm? _overlay;
     private readonly AnnotationSettings _settings = AnnotationSettings.Load();
     private readonly GlobalMouseHook _mouseHook = new();
-    private AnnotationArrow? _pendingArrow;
+    private Point? _arrowStart;
+    private Point _arrowPreviewEnd;
+    private bool _arrowPreviewVisible;
     private AnnotationArrow? _queuedMemoArrow;
     private bool _removeQueuedArrowOnCancel;
     private bool _dragging;
 
     public AnnotationManager()
     {
+        _settings.NextMarkerNumber = 1;
         _mouseHook.Handler = HandleGlobalMouse;
     }
 
@@ -30,7 +33,7 @@ public sealed class AnnotationManager : IDisposable
         ActiveTool = tool;
         if (tool != AnnotationTool.Arrow)
         {
-            CancelPendingArrow();
+            CancelArrowDrag();
         }
 
         if (tool == AnnotationTool.None)
@@ -56,17 +59,13 @@ public sealed class AnnotationManager : IDisposable
 
         var removed = _items[^1];
         _items.RemoveAt(_items.Count - 1);
-        if (ReferenceEquals(removed, _pendingArrow))
-        {
-            _pendingArrow = null;
-        }
         RefreshOverlays();
     }
 
     public void ClearAll()
     {
         _items.Clear();
-        _pendingArrow = null;
+        CancelArrowDrag();
         RefreshOverlays();
     }
 
@@ -76,46 +75,44 @@ public sealed class AnnotationManager : IDisposable
         Application.DoEvents();
 
         var virtualBounds = SystemInformation.VirtualScreen;
-        using var source = new Bitmap(virtualBounds.Width, virtualBounds.Height, PixelFormat.Format32bppArgb);
-        using (var graphics = Graphics.FromImage(source))
-        {
-            graphics.CopyFromScreen(
-                virtualBounds.Location,
-                Point.Empty,
-                virtualBounds.Size,
-                CopyPixelOperation.SourceCopy | CopyPixelOperation.CaptureBlt);
-        }
-
-        _overlay?.Hide();
+        Bitmap source;
         try
         {
-            using var selectionImage = (Bitmap)source.Clone();
-            using var selector = new CaptureSelectionForm(selectionImage, virtualBounds);
-            if (selector.ShowDialog() != DialogResult.OK)
-            {
-                return;
-            }
-
-            var selected = selector.SelectedRegion;
-            using var result = source.Clone(selected, PixelFormat.Format32bppArgb);
-            using var saveDialog = new SaveFileDialog
-            {
-                Title = "마킹 화면 저장",
-                Filter = "PNG 이미지 (*.png)|*.png",
-                DefaultExt = "png",
-                AddExtension = true,
-                InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
-                FileName = $"WindowForm_Move_{DateTime.Now:yyyyMMdd_HHmmss}.png"
-            };
-
-            if (saveDialog.ShowDialog() == DialogResult.OK)
-            {
-                result.Save(saveDialog.FileName, ImageFormat.Png);
-            }
+            source = ScreenCapture.Capture(virtualBounds);
         }
-        finally
+        catch (Exception exception)
         {
+            _overlay?.Hide();
+            MessageBox.Show(exception.Message, "캡처 오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
             RefreshOverlays();
+            return;
+        }
+
+        using (source)
+        {
+            _overlay?.Hide();
+            try
+            {
+                using var selectionImage = (Bitmap)source.Clone();
+                using var selector = new CaptureSelectionForm(selectionImage, virtualBounds);
+                if (selector.ShowDialog() != DialogResult.OK)
+                {
+                    return;
+                }
+
+                var selected = selector.SelectedRegion;
+                using var result = source.Clone(selected, PixelFormat.Format32bppArgb);
+                var outputPath = CreateCapturePath();
+                result.Save(outputPath, ImageFormat.Png);
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show(exception.Message, "캡처 저장 오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                RefreshOverlays();
+            }
         }
     }
 
@@ -131,7 +128,6 @@ public sealed class AnnotationManager : IDisposable
         var markerNumber = _settings.NextMarkerNumber;
         _items.Add(new ScreenMarker(markerNumber, location));
         _settings.NextMarkerNumber++;
-        _settings.Save();
         RefreshArea(location, location, _settings.MarkerSize / 2F + 3F);
     }
 
@@ -166,20 +162,48 @@ public sealed class AnnotationManager : IDisposable
         return _settings;
     }
 
-    private void AddArrowPoint(Point location)
+    private void BeginArrowDrag(Point location)
     {
-        if (_pendingArrow is null)
+        CancelArrowDrag();
+        _arrowStart = location;
+        _arrowPreviewEnd = location;
+        _dragging = true;
+    }
+
+    private void UpdateArrowPreview(Point location)
+    {
+        if (_arrowStart is null)
         {
-            _pendingArrow = new AnnotationArrow(location, location, _settings.ArrowColor, _settings.ArrowWidth);
-            _items.Add(_pendingArrow);
-            RefreshArea(location, location, _settings.ArrowWidth + 8F);
             return;
         }
 
-        var arrow = _pendingArrow;
-        _pendingArrow = null;
-        arrow.End = location;
-        arrow.IsPending = false;
+        EraseArrowPreview();
+        _arrowPreviewEnd = location;
+        if (_arrowStart.Value != location)
+        {
+            ControlPaint.DrawReversibleLine(_arrowStart.Value, location, _settings.ArrowColor);
+            _arrowPreviewVisible = true;
+        }
+    }
+
+    private void CompleteArrowDrag(Point location)
+    {
+        if (_arrowStart is null)
+        {
+            return;
+        }
+
+        var start = _arrowStart.Value;
+        EraseArrowPreview();
+        _arrowStart = null;
+        _dragging = false;
+        if (DistanceSquared(start, location) < 25F)
+        {
+            return;
+        }
+
+        var arrow = new AnnotationArrow(start, location, _settings.ArrowColor, _settings.ArrowWidth);
+        _items.Add(arrow);
         RefreshOverlays();
 
         QueueMemoEdit(arrow, removeOnCancel: true);
@@ -234,7 +258,6 @@ public sealed class AnnotationManager : IDisposable
         switch (mouseEvent.Type)
         {
             case GlobalMouseEventType.LeftDown:
-                _dragging = true;
                 if (ActiveTool == AnnotationTool.Marker)
                 {
                     AddMarker(mouseEvent.Location);
@@ -242,14 +265,25 @@ public sealed class AnnotationManager : IDisposable
                 }
                 else if (ActiveTool == AnnotationTool.Arrow)
                 {
-                    if (_pendingArrow is null && TryScheduleMemoEdit(mouseEvent.Location))
+                    if (TryScheduleMemoEdit(mouseEvent.Location))
                     {
                         _dragging = false;
                         return true;
                     }
 
-                    AddArrowPoint(mouseEvent.Location);
-                    _dragging = false;
+                    BeginArrowDrag(mouseEvent.Location);
+                }
+                else if (ActiveTool == AnnotationTool.Eraser)
+                {
+                    _dragging = true;
+                    EraseAt(mouseEvent.Location);
+                }
+                return true;
+
+            case GlobalMouseEventType.Move when _dragging:
+                if (ActiveTool == AnnotationTool.Arrow)
+                {
+                    UpdateArrowPreview(mouseEvent.Location);
                 }
                 else if (ActiveTool == AnnotationTool.Eraser)
                 {
@@ -257,15 +291,15 @@ public sealed class AnnotationManager : IDisposable
                 }
                 return true;
 
-            case GlobalMouseEventType.Move when _dragging:
-                if (ActiveTool == AnnotationTool.Eraser)
-                {
-                    EraseAt(mouseEvent.Location);
-                }
-                return true;
-
             case GlobalMouseEventType.LeftUp:
-                _dragging = false;
+                if (_dragging && ActiveTool == AnnotationTool.Arrow)
+                {
+                    CompleteArrowDrag(mouseEvent.Location);
+                }
+                else
+                {
+                    _dragging = false;
+                }
                 OpenQueuedMemoAfterMouseUp();
                 return true;
         }
@@ -294,7 +328,7 @@ public sealed class AnnotationManager : IDisposable
         }
 
         var memoBounds = AnnotationGeometry.GetMemoBounds(arrow, SystemInformation.VirtualScreen);
-        if (!arrow.IsPending && memoBounds.Contains(location))
+        if (memoBounds.Contains(location))
         {
             return true;
         }
@@ -355,9 +389,7 @@ public sealed class AnnotationManager : IDisposable
                 Math.Min(arrow.Start.Y, arrow.End.Y) - pad,
                 Math.Max(arrow.Start.X, arrow.End.X) + pad + 1,
                 Math.Max(arrow.Start.Y, arrow.End.Y) + pad + 1);
-            return arrow.IsPending
-                ? arrowBounds
-                : Rectangle.Union(arrowBounds, AnnotationGeometry.GetMemoBounds(arrow, SystemInformation.VirtualScreen));
+            return Rectangle.Union(arrowBounds, AnnotationGeometry.GetMemoBounds(arrow, SystemInformation.VirtualScreen));
         }
 
         return Rectangle.Empty;
@@ -391,8 +423,7 @@ public sealed class AnnotationManager : IDisposable
     {
         var arrow = _items
             .OfType<AnnotationArrow>()
-            .LastOrDefault(item => !item.IsPending &&
-                AnnotationGeometry.GetMemoBounds(item, SystemInformation.VirtualScreen).Contains(location));
+            .LastOrDefault(item => AnnotationGeometry.GetMemoBounds(item, SystemInformation.VirtualScreen).Contains(location));
         if (arrow is null || _overlay is null || _overlay.IsDisposed)
         {
             return false;
@@ -421,15 +452,62 @@ public sealed class AnnotationManager : IDisposable
         _overlay.BeginInvoke(new Action(() => EditArrowMemo(arrow, removeOnCancel)));
     }
 
-    private void CancelPendingArrow()
+    private void CancelArrowDrag()
     {
-        if (_pendingArrow is null)
+        EraseArrowPreview();
+        _arrowStart = null;
+        _dragging = false;
+    }
+
+    private void EraseArrowPreview()
+    {
+        if (!_arrowPreviewVisible || _arrowStart is null)
         {
             return;
         }
 
-        _items.Remove(_pendingArrow);
-        _pendingArrow = null;
-        RefreshOverlays();
+        ControlPaint.DrawReversibleLine(_arrowStart.Value, _arrowPreviewEnd, _settings.ArrowColor);
+        _arrowPreviewVisible = false;
+    }
+
+    private string CreateCapturePath()
+    {
+        var directory = string.IsNullOrWhiteSpace(_settings.CaptureDirectory)
+            ? Environment.GetFolderPath(Environment.SpecialFolder.MyPictures)
+            : Environment.ExpandEnvironmentVariables(_settings.CaptureDirectory.Trim());
+        Directory.CreateDirectory(directory);
+
+        var now = DateTime.Now;
+        var pattern = string.IsNullOrWhiteSpace(_settings.CaptureFileNamePattern)
+            ? "{date}_{time}"
+            : _settings.CaptureFileNamePattern.Trim();
+        var fileName = pattern
+            .Replace("{datetime}", now.ToString("yyyyMMdd_HHmmss"), StringComparison.OrdinalIgnoreCase)
+            .Replace("{date}", now.ToString("yyyyMMdd"), StringComparison.OrdinalIgnoreCase)
+            .Replace("{time}", now.ToString("HHmmss"), StringComparison.OrdinalIgnoreCase);
+
+        foreach (var invalidCharacter in Path.GetInvalidFileNameChars())
+        {
+            fileName = fileName.Replace(invalidCharacter, '_');
+        }
+
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            fileName = now.ToString("yyyyMMdd_HHmmss");
+        }
+
+        if (fileName.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+        {
+            fileName = fileName[..^4];
+        }
+
+        var path = Path.Combine(directory, fileName + ".png");
+        var suffix = 1;
+        while (File.Exists(path))
+        {
+            path = Path.Combine(directory, $"{fileName}_{suffix++}.png");
+        }
+
+        return path;
     }
 }

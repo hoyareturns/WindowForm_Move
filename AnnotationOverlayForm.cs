@@ -129,31 +129,30 @@ public sealed class AnnotationOverlayForm : Form
     {
         var center = PointToClient(marker.Location);
         var settings = _getSettings();
-        var diameter = settings.MarkerSize;
-        var circle = new Rectangle(center.X - diameter / 2, center.Y - diameter / 2, diameter, diameter);
+        var diameter = settings.MarkerSize % 2 == 0 ? settings.MarkerSize + 1 : settings.MarkerSize;
+        var radius = diameter / 2;
+        using var fillPen = new Pen(settings.MarkerColor, 1F);
+        for (var y = -radius; y <= radius; y++)
+        {
+            var extent = (int)Math.Floor(Math.Sqrt(radius * radius - y * y));
+            graphics.DrawLine(fillPen, center.X - extent, center.Y + y, center.X + extent, center.Y + y);
+        }
 
-        using var fillBrush = new SolidBrush(settings.MarkerColor);
-        graphics.FillEllipse(fillBrush, circle);
-
+        var textBounds = new Rectangle(center.X - radius, center.Y - radius, diameter, diameter);
         using var font = new Font("Segoe UI", marker.Number >= 100 ? 8F : 10F, FontStyle.Bold);
-        using var textBrush = new SolidBrush(Color.White);
-        graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.SingleBitPerPixelGridFit;
-        var text = marker.Number.ToString();
-        var size = graphics.MeasureString(text, font);
-        graphics.DrawString(text, font, textBrush, center.X - size.Width / 2, center.Y - size.Height / 2);
+        TextRenderer.DrawText(
+            graphics,
+            marker.Number.ToString(),
+            font,
+            textBounds,
+            Color.White,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
     }
 
     private void DrawArrow(Graphics graphics, AnnotationArrow arrow)
     {
         var start = PointToClient(arrow.Start);
         var end = PointToClient(arrow.End);
-        if (arrow.IsPending && start == end)
-        {
-            using var startBrush = new SolidBrush(arrow.Color);
-            graphics.FillEllipse(startBrush, start.X - 4, start.Y - 4, 8, 8);
-            return;
-        }
-
         using var arrowCap = new System.Drawing.Drawing2D.AdjustableArrowCap(5F, 6F, true);
         using var pen = new Pen(arrow.Color, arrow.Width)
         {
@@ -163,11 +162,6 @@ public sealed class AnnotationOverlayForm : Form
         };
         graphics.DrawLine(pen, start, end);
 
-        if (arrow.IsPending)
-        {
-            return;
-        }
-
         var memoBounds = AnnotationGeometry.GetMemoBounds(arrow, Bounds);
         memoBounds.Offset(-Left, -Top);
         using var memoBack = new SolidBrush(Color.FromArgb(255, 252, 220));
@@ -176,15 +170,13 @@ public sealed class AnnotationOverlayForm : Form
         graphics.DrawRectangle(memoBorder, Rectangle.Inflate(memoBounds, -1, -1));
 
         var textBounds = Rectangle.Inflate(memoBounds, -8, -6);
-        using var font = new Font("Segoe UI", 10F, FontStyle.Regular);
-        using var textBrush = new SolidBrush(Color.FromArgb(28, 28, 28));
-        using var format = new StringFormat
-        {
-            Alignment = StringAlignment.Near,
-            LineAlignment = StringAlignment.Center,
-            Trimming = StringTrimming.EllipsisWord
-        };
-        graphics.DrawString(arrow.Text, font, textBrush, textBounds, format);
+        TextRenderer.DrawText(
+            graphics,
+            arrow.Text,
+            SystemFonts.MessageBoxFont,
+            textBounds,
+            Color.FromArgb(28, 28, 28),
+            TextFormatFlags.WordBreak | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
     }
 }
 
@@ -207,7 +199,6 @@ public sealed record AnnotationArrow : AnnotationItem
     public Color Color { get; }
     public float Width { get; }
     public string Text { get; set; } = string.Empty;
-    public bool IsPending { get; set; } = true;
 }
 
 public enum AnnotationTool

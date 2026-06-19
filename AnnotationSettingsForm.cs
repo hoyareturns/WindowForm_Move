@@ -7,6 +7,8 @@ public sealed class AnnotationSettingsForm : Form
     private readonly NumericUpDown _nextMarkerNumberInput;
     private readonly Button _penColorButton;
     private readonly NumericUpDown _penWidthInput;
+    private readonly TextBox _captureDirectoryInput;
+    private readonly TextBox _fileNamePatternInput;
 
     public AnnotationSettingsForm(AnnotationSettings settings)
     {
@@ -17,7 +19,7 @@ public sealed class AnnotationSettingsForm : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
         TopMost = true;
-        ClientSize = new Size(310, 220);
+        ClientSize = new Size(430, 292);
         Font = new Font("Segoe UI", 9F);
 
         _markerColorButton = CreateColorButton(settings.MarkerColor);
@@ -25,28 +27,41 @@ public sealed class AnnotationSettingsForm : Form
         _nextMarkerNumberInput = CreateNumberInput(settings.NextMarkerNumber, 1, 9999, 1);
         _penColorButton = CreateColorButton(settings.PenColor);
         _penWidthInput = CreateNumberInput((decimal)settings.PenWidth, 1, 20, 1);
+        _captureDirectoryInput = new TextBox { Text = settings.CaptureDirectory, Width = 205 };
+        _fileNamePatternInput = new TextBox { Text = settings.CaptureFileNamePattern, Width = 225 };
 
         var table = new TableLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 158,
+            Height = 228,
             Padding = new Padding(14),
             ColumnCount = 2,
-            RowCount = 5
+            RowCount = 7
         };
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 38));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 62));
         AddRow(table, 0, "마커 색상", _markerColorButton);
         AddRow(table, 1, "마커 크기", _markerSizeInput);
         AddRow(table, 2, "화살표 색상", _penColorButton);
         AddRow(table, 3, "화살표 두께", _penWidthInput);
         AddRow(table, 4, "다음 마커 번호", _nextMarkerNumberInput);
+        AddRow(table, 5, "캡처 저장 폴더", CreateDirectoryPicker());
+        AddRow(table, 6, "파일명 규칙", _fileNamePatternInput);
         Controls.Add(table);
+
+        var patternHelp = new Label
+        {
+            Text = "사용 가능: {date}  {time}  {datetime}",
+            AutoSize = true,
+            ForeColor = Color.DimGray,
+            Location = new Point(184, 235)
+        };
+        Controls.Add(patternHelp);
 
         var cancel = new Button { Text = "취소", DialogResult = DialogResult.Cancel, Size = new Size(76, 28) };
         var ok = new Button { Text = "확인", DialogResult = DialogResult.OK, Size = new Size(76, 28) };
-        cancel.Location = new Point(138, 178);
-        ok.Location = new Point(220, 178);
+        cancel.Location = new Point(266, 258);
+        ok.Location = new Point(348, 258);
         Controls.Add(cancel);
         Controls.Add(ok);
         AcceptButton = ok;
@@ -60,6 +75,8 @@ public sealed class AnnotationSettingsForm : Form
         settings.NextMarkerNumber = (int)_nextMarkerNumberInput.Value;
         settings.PenColorArgb = _penColorButton.BackColor.ToArgb();
         settings.PenWidth = (float)_penWidthInput.Value;
+        settings.CaptureDirectory = _captureDirectoryInput.Text.Trim();
+        settings.CaptureFileNamePattern = _fileNamePatternInput.Text.Trim();
     }
 
     private static Button CreateColorButton(Color color)
@@ -87,6 +104,36 @@ public sealed class AnnotationSettingsForm : Form
             Value = Math.Clamp(value, min, max),
             Width = 70
         };
+    }
+
+    private Control CreateDirectoryPicker()
+    {
+        var panel = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
+        var browse = new Button { Text = "...", Size = new Size(32, 23), Margin = new Padding(4, 0, 0, 0) };
+        browse.Click += (_, _) =>
+        {
+            using var dialog = new FolderBrowserDialog
+            {
+                Description = "캡처 저장 폴더 선택",
+                SelectedPath = Directory.Exists(_captureDirectoryInput.Text)
+                    ? _captureDirectoryInput.Text
+                    : Environment.GetFolderPath(Environment.SpecialFolder.MyPictures)
+            };
+            if (dialog.ShowDialog(this) == DialogResult.OK)
+            {
+                _captureDirectoryInput.Text = dialog.SelectedPath;
+            }
+        };
+        panel.Controls.Add(_captureDirectoryInput);
+        panel.Controls.Add(browse);
+        return panel;
     }
 
     private static void AddRow(TableLayoutPanel table, int row, string label, Control control)

@@ -10,6 +10,8 @@ public sealed class AnnotationSettings
     public int NextMarkerNumber { get; set; } = 1;
     public int PenColorArgb { get; set; } = Color.FromArgb(0, 170, 230).ToArgb();
     public float PenWidth { get; set; } = 3F;
+    public string CaptureDirectory { get; set; } = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+    public string CaptureFileNamePattern { get; set; } = "{date}_{time}";
 
     [JsonIgnore]
     public Color MarkerColor => Color.FromArgb(MarkerColorArgb);
@@ -28,9 +30,16 @@ public sealed class AnnotationSettings
         try
         {
             var path = GetSettingsPath();
-            return File.Exists(path)
+            var settings = File.Exists(path)
                 ? JsonSerializer.Deserialize<AnnotationSettings>(File.ReadAllText(path)) ?? new AnnotationSettings()
                 : new AnnotationSettings();
+            settings.CaptureDirectory = string.IsNullOrWhiteSpace(settings.CaptureDirectory)
+                ? Environment.GetFolderPath(Environment.SpecialFolder.MyPictures)
+                : settings.CaptureDirectory;
+            settings.CaptureFileNamePattern = string.IsNullOrWhiteSpace(settings.CaptureFileNamePattern)
+                ? "{date}_{time}"
+                : settings.CaptureFileNamePattern;
+            return settings;
         }
         catch
         {

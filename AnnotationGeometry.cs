@@ -2,26 +2,60 @@ namespace WindowForm_Move;
 
 public static class AnnotationGeometry
 {
-    public const int MemoWidth = 180;
-    public const int MemoHeight = 64;
+    private const int MinimumMemoWidth = 90;
+    private const int MinimumMemoHeight = 38;
+    private const int MaximumMemoWidth = 300;
+    private const int MaximumMemoHeight = 160;
 
     public static Rectangle GetMemoBounds(AnnotationArrow arrow, Rectangle virtualBounds)
     {
-        var x = arrow.End.X + 12;
-        var y = arrow.End.Y + 12;
+        var measured = string.IsNullOrWhiteSpace(arrow.Text)
+            ? new Size(MinimumMemoWidth - 16, MinimumMemoHeight - 12)
+            : TextRenderer.MeasureText(
+                arrow.Text,
+                SystemFonts.MessageBoxFont,
+                new Size(MaximumMemoWidth - 16, MaximumMemoHeight - 12),
+                TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
+        var width = Math.Clamp(measured.Width + 16, MinimumMemoWidth, MaximumMemoWidth);
+        var height = Math.Clamp(measured.Height + 12, MinimumMemoHeight, MaximumMemoHeight);
 
-        if (x + MemoWidth > virtualBounds.Right)
+        var dx = arrow.End.X - arrow.Start.X;
+        var dy = arrow.End.Y - arrow.Start.Y;
+        int x;
+        int y;
+        if (Math.Abs(dx) >= Math.Abs(dy))
         {
-            x = arrow.End.X - MemoWidth - 12;
+            var placeRight = dx >= 0;
+            if (placeRight && arrow.End.X + width > virtualBounds.Right)
+            {
+                placeRight = false;
+            }
+            else if (!placeRight && arrow.End.X - width < virtualBounds.Left)
+            {
+                placeRight = true;
+            }
+
+            x = placeRight ? arrow.End.X : arrow.End.X - width;
+            y = arrow.End.Y - height / 2;
+        }
+        else
+        {
+            var placeBelow = dy >= 0;
+            if (placeBelow && arrow.End.Y + height > virtualBounds.Bottom)
+            {
+                placeBelow = false;
+            }
+            else if (!placeBelow && arrow.End.Y - height < virtualBounds.Top)
+            {
+                placeBelow = true;
+            }
+
+            x = arrow.End.X - width / 2;
+            y = placeBelow ? arrow.End.Y : arrow.End.Y - height;
         }
 
-        if (y + MemoHeight > virtualBounds.Bottom)
-        {
-            y = arrow.End.Y - MemoHeight - 12;
-        }
-
-        x = Math.Clamp(x, virtualBounds.Left, Math.Max(virtualBounds.Left, virtualBounds.Right - MemoWidth));
-        y = Math.Clamp(y, virtualBounds.Top, Math.Max(virtualBounds.Top, virtualBounds.Bottom - MemoHeight));
-        return new Rectangle(x, y, MemoWidth, MemoHeight);
+        x = Math.Clamp(x, virtualBounds.Left, Math.Max(virtualBounds.Left, virtualBounds.Right - width));
+        y = Math.Clamp(y, virtualBounds.Top, Math.Max(virtualBounds.Top, virtualBounds.Bottom - height));
+        return new Rectangle(x, y, width, height);
     }
 }
