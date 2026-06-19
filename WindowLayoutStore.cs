@@ -62,11 +62,11 @@ public sealed class WindowLayoutStore
         return true;
     }
 
-    public bool Load(string name, bool launchMissingPrograms)
+    public bool Load(string name)
     {
         var profile = Find(name);
         return profile is not null &&
-               WindowController.RestoreWindowLayout(profile.Windows, launchMissingPrograms) > 0;
+               WindowController.RestoreWindowLayout(profile.Windows) > 0;
     }
 
     public bool Delete(string name)

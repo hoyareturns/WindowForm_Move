@@ -11,6 +11,7 @@ public sealed class AnnotationManager : IDisposable
     private Point? _arrowStart;
     private Point _arrowPreviewEnd;
     private bool _arrowPreviewVisible;
+    private long _lastArrowPreviewTick;
     private AnnotationArrow? _queuedMemoArrow;
     private bool _removeQueuedArrowOnCancel;
     private bool _dragging;
@@ -22,6 +23,44 @@ public sealed class AnnotationManager : IDisposable
     }
 
     public AnnotationTool ActiveTool { get; private set; }
+    public Color MarkerColor => _settings.MarkerColor;
+    public int NextMarkerNumber => _settings.NextMarkerNumber;
+    public event Action? ToolbarStateChanged;
+
+    public void SetNextMarkerNumber(int number)
+    {
+        var nextNumber = Math.Clamp(number, 1, 9999);
+        if (_settings.NextMarkerNumber == nextNumber)
+        {
+            return;
+        }
+
+        _settings.NextMarkerNumber = nextNumber;
+        ToolbarStateChanged?.Invoke();
+    }
+
+    public void ChooseMarkerColor()
+    {
+        var previousTool = ActiveTool;
+        SetActiveTool(AnnotationTool.None);
+        _overlay?.Hide();
+        try
+        {
+            using var dialog = new ColorDialog { Color = _settings.MarkerColor, FullOpen = true };
+            var owner = Application.OpenForms.OfType<OverlayForm>().FirstOrDefault(form => form.Visible);
+            if (dialog.ShowDialog(owner) == DialogResult.OK)
+            {
+                _settings.MarkerColorArgb = dialog.Color.ToArgb();
+                _settings.Save();
+            }
+        }
+        finally
+        {
+            RefreshOverlays();
+            SetActiveTool(previousTool);
+            ToolbarStateChanged?.Invoke();
+        }
+    }
 
     public void ToggleTool(AnnotationTool tool)
     {
@@ -40,6 +79,7 @@ public sealed class AnnotationManager : IDisposable
         {
             _dragging = false;
             _queuedMemoArrow = null;
+            _mouseHook.TrackMouseMove = false;
             _mouseHook.Stop();
         }
         else
@@ -104,6 +144,7 @@ public sealed class AnnotationManager : IDisposable
                 using var result = source.Clone(selected, PixelFormat.Format32bppArgb);
                 var outputPath = CreateCapturePath();
                 result.Save(outputPath, ImageFormat.Png);
+                ExplorerFolder.OpenIfNotOpen(Path.GetDirectoryName(outputPath)!);
             }
             catch (Exception exception)
             {
@@ -128,6 +169,7 @@ public sealed class AnnotationManager : IDisposable
         var markerNumber = _settings.NextMarkerNumber;
         _items.Add(new ScreenMarker(markerNumber, location));
         _settings.NextMarkerNumber++;
+        ToolbarStateChanged?.Invoke();
         RefreshArea(location, location, _settings.MarkerSize / 2F + 3F);
     }
 
@@ -167,7 +209,9 @@ public sealed class AnnotationManager : IDisposable
         CancelArrowDrag();
         _arrowStart = location;
         _arrowPreviewEnd = location;
+        _lastArrowPreviewTick = 0;
         _dragging = true;
+        _mouseHook.TrackMouseMove = true;
     }
 
     private void UpdateArrowPreview(Point location)
@@ -176,6 +220,14 @@ public sealed class AnnotationManager : IDisposable
         {
             return;
         }
+
+        var now = Environment.TickCount64;
+        if (now - _lastArrowPreviewTick < 16 || DistanceSquared(_arrowPreviewEnd, location) < 9F)
+        {
+            return;
+        }
+
+        _lastArrowPreviewTick = now;
 
         EraseArrowPreview();
         _arrowPreviewEnd = location;
@@ -197,6 +249,7 @@ public sealed class AnnotationManager : IDisposable
         EraseArrowPreview();
         _arrowStart = null;
         _dragging = false;
+        _mouseHook.TrackMouseMove = false;
         if (DistanceSquared(start, location) < 25F)
         {
             return;
@@ -276,6 +329,7 @@ public sealed class AnnotationManager : IDisposable
                 else if (ActiveTool == AnnotationTool.Eraser)
                 {
                     _dragging = true;
+                    _mouseHook.TrackMouseMove = true;
                     EraseAt(mouseEvent.Location);
                 }
                 return true;
@@ -299,6 +353,7 @@ public sealed class AnnotationManager : IDisposable
                 else
                 {
                     _dragging = false;
+                    _mouseHook.TrackMouseMove = false;
                 }
                 OpenQueuedMemoAfterMouseUp();
                 return true;
@@ -457,6 +512,7 @@ public sealed class AnnotationManager : IDisposable
         EraseArrowPreview();
         _arrowStart = null;
         _dragging = false;
+        _mouseHook.TrackMouseMove = false;
     }
 
     private void EraseArrowPreview()

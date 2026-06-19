@@ -3,8 +3,8 @@ namespace WindowForm_Move;
 public sealed class OverlayForm : Form
 {
     private const int CollapsedWidth = 536;
-    private const int LayoutExpandedAddition = 138;
-    private const int AnnotationExpandedAddition = 180;
+    private const int LayoutExpandedAddition = 112;
+    private const int AnnotationExpandedAddition = 260;
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     private const int WS_EX_TOPMOST = 0x00000008;
     private const int WM_MOUSEACTIVATE = 0x0021;
@@ -18,12 +18,14 @@ public sealed class OverlayForm : Form
     private readonly Func<string, bool> _saveLayout;
     private readonly Func<string, bool> _loadLayout;
     private readonly Func<string, bool> _deleteLayout;
-    private readonly Func<bool> _getLaunchMissingPrograms;
-    private readonly Action _toggleLaunchMissingPrograms;
     private readonly Func<bool> _getLayoutControlsExpanded;
     private readonly Action _toggleLayoutControls;
     private readonly Func<AnnotationTool> _getAnnotationTool;
     private readonly Action<AnnotationTool> _toggleAnnotationTool;
+    private readonly Func<Color> _getMarkerColor;
+    private readonly Action _chooseMarkerColor;
+    private readonly Func<int> _getNextMarkerNumber;
+    private readonly Action<int> _setNextMarkerNumber;
     private readonly Action _undoAnnotation;
     private readonly Action _clearAnnotations;
     private readonly Action _captureSelectedRegion;
@@ -37,7 +39,6 @@ public sealed class OverlayForm : Form
     private readonly List<Control> _annotationControls = new();
     private Button? _allButton;
     private Button? _crosshairButton;
-    private Button? _launchMissingButton;
     private Button? _layoutLeftToggleButton;
     private Button? _layoutRightToggleButton;
     private Button? _annotationLeftToggleButton;
@@ -45,6 +46,8 @@ public sealed class OverlayForm : Form
     private Button? _markerButton;
     private Button? _arrowMemoButton;
     private Button? _eraserButton;
+    private Button? _markerColorButton;
+    private NumericUpDown? _markerNumberInput;
 
     public IntPtr TargetWindow { get; }
 
@@ -70,12 +73,14 @@ public sealed class OverlayForm : Form
         Func<string, bool> saveLayout,
         Func<string, bool> loadLayout,
         Func<string, bool> deleteLayout,
-        Func<bool> getLaunchMissingPrograms,
-        Action toggleLaunchMissingPrograms,
         Func<bool> getLayoutControlsExpanded,
         Action toggleLayoutControls,
         Func<AnnotationTool> getAnnotationTool,
         Action<AnnotationTool> toggleAnnotationTool,
+        Func<Color> getMarkerColor,
+        Action chooseMarkerColor,
+        Func<int> getNextMarkerNumber,
+        Action<int> setNextMarkerNumber,
         Action undoAnnotation,
         Action clearAnnotations,
         Action captureSelectedRegion,
@@ -93,12 +98,14 @@ public sealed class OverlayForm : Form
         _saveLayout = saveLayout;
         _loadLayout = loadLayout;
         _deleteLayout = deleteLayout;
-        _getLaunchMissingPrograms = getLaunchMissingPrograms;
-        _toggleLaunchMissingPrograms = toggleLaunchMissingPrograms;
         _getLayoutControlsExpanded = getLayoutControlsExpanded;
         _toggleLayoutControls = toggleLayoutControls;
         _getAnnotationTool = getAnnotationTool;
         _toggleAnnotationTool = toggleAnnotationTool;
+        _getMarkerColor = getMarkerColor;
+        _chooseMarkerColor = chooseMarkerColor;
+        _getNextMarkerNumber = getNextMarkerNumber;
+        _setNextMarkerNumber = setNextMarkerNumber;
         _undoAnnotation = undoAnnotation;
         _clearAnnotations = clearAnnotations;
         _captureSelectedRegion = captureSelectedRegion;
@@ -118,6 +125,7 @@ public sealed class OverlayForm : Form
         _toolTip.InitialDelay = 350;
         _toolTip.ReshowDelay = 100;
         _toolTip.AutoPopDelay = 5000;
+        _toolTip.ShowAlways = true;
 
         BuildButtons();
     }
@@ -127,7 +135,8 @@ public sealed class OverlayForm : Form
         if (m.Msg == WM_MOUSEACTIVATE)
         {
             var comboBounds = _layoutCombo.RectangleToScreen(_layoutCombo.ClientRectangle);
-            if (!comboBounds.Contains(Cursor.Position))
+            var markerNumberBounds = _markerNumberInput?.RectangleToScreen(_markerNumberInput.ClientRectangle) ?? Rectangle.Empty;
+            if (!comboBounds.Contains(Cursor.Position) && !markerNumberBounds.Contains(Cursor.Position))
             {
                 m.Result = new IntPtr(MA_NOACTIVATE);
                 return;
@@ -207,12 +216,19 @@ public sealed class OverlayForm : Form
             _crosshairButton.Invalidate();
         }
 
-        if (_launchMissingButton is not null)
+        if (_markerColorButton is not null)
         {
-            _launchMissingButton.BackColor = _getLaunchMissingPrograms()
-                ? Color.FromArgb(0, 105, 145)
-                : Color.FromArgb(45, 45, 45);
-            _launchMissingButton.Invalidate();
+            _markerColorButton.BackColor = _getMarkerColor();
+            _markerColorButton.Invalidate();
+        }
+
+        if (_markerNumberInput is not null)
+        {
+            var nextNumber = Math.Clamp(_getNextMarkerNumber(), 1, 9999);
+            if (_markerNumberInput.Value != nextNumber)
+            {
+                _markerNumberInput.Value = nextNumber;
+            }
         }
 
         if (_markerButton is not null)
@@ -271,11 +287,31 @@ public sealed class OverlayForm : Form
         _annotationLeftToggleButton = CreateSetToggleButton(pointsRight: false, _toggleAnnotationControls);
         panel.Controls.Add(_annotationLeftToggleButton);
 
-        _markerButton = CreateFlatButton("M", 22);
+        _markerColorButton = CreateFlatButton(string.Empty, 24);
+        _markerColorButton.FlatAppearance.BorderColor = Color.White;
+        _markerColorButton.Click += (_, _) => _chooseMarkerColor();
+        AddAnnotationControl(panel, _markerColorButton, "마커 색상 선택");
+
+        _markerNumberInput = new NumericUpDown
+        {
+            Minimum = 1,
+            Maximum = 9999,
+            Value = Math.Clamp(_getNextMarkerNumber(), 1, 9999),
+            Size = new Size(48, 23),
+            Margin = new Padding(1),
+            Font = new Font("Segoe UI", 8F),
+            TextAlign = HorizontalAlignment.Center,
+            BorderStyle = BorderStyle.FixedSingle,
+            TabStop = false
+        };
+        _markerNumberInput.ValueChanged += (_, _) => _setNextMarkerNumber((int)_markerNumberInput.Value);
+        AddAnnotationControl(panel, _markerNumberInput, "다음 마커 번호 입력 (마킹 후 자동 증가)");
+
+        _markerButton = CreateFlatButton("①", 24);
         _markerButton.Click += (_, _) => _toggleAnnotationTool(AnnotationTool.Marker);
         AddAnnotationControl(panel, _markerButton, "번호 마커 찍기");
 
-        _arrowMemoButton = CreateFlatButton("A", 22);
+        _arrowMemoButton = CreateFlatButton("↗", 24);
         _arrowMemoButton.Click += (_, _) => _toggleAnnotationTool(AnnotationTool.Arrow);
         AddAnnotationControl(panel, _arrowMemoButton, "드래그로 화살표+메모 추가, 기존 메모 클릭 시 수정");
 
@@ -286,7 +322,7 @@ public sealed class OverlayForm : Form
         AddAnnotationControl(panel, CreateCommandButton("↶", 24, _undoAnnotation), "마지막 마커 또는 화살표 실행취소");
         AddAnnotationControl(panel, CreateCommandButton("AC", 28, _clearAnnotations), "모든 마커와 선 지우기");
         AddAnnotationControl(panel, CreateWindowIconButton(WindowControlIcon.Capture, _captureSelectedRegion, false, 24), "드래그한 영역을 PNG로 저장");
-        AddAnnotationControl(panel, CreateWindowIconButton(WindowControlIcon.Settings, _showAnnotationSettings, false, 24), "마커와 화살표 색상·두께 설정");
+        AddAnnotationControl(panel, CreateWindowIconButton(WindowControlIcon.Settings, _showAnnotationSettings, false, 24), "마커 크기, 화살표, 캡처 설정");
 
         _annotationRightToggleButton = CreateSetToggleButton(pointsRight: true, _toggleAnnotationControls);
         panel.Controls.Add(_annotationRightToggleButton);
@@ -307,13 +343,6 @@ public sealed class OverlayForm : Form
         AddLayoutControl(panel, CreateLayoutButton("S", "현재 창 위치 저장 (Save)", _saveLayout));
         AddLayoutControl(panel, CreateLayoutButton("L", "선택한 창 위치 불러오기 (Load)", _loadLayout));
         AddLayoutControl(panel, CreateLayoutButton("D", "선택한 창 위치 삭제 (Delete)", _deleteLayout));
-
-        _launchMissingButton = CreateFlatButton("R", 24);
-        _launchMissingButton.Font = new Font("Segoe UI", 7F, FontStyle.Bold);
-        _launchMissingButton.Click += (_, _) => _toggleLaunchMissingPrograms();
-        _toolTip.SetToolTip(_launchMissingButton, "불러올 때 누락된 프로그램 자동 실행");
-        panel.Controls.Add(_launchMissingButton);
-        _layoutControls.Add(_launchMissingButton);
 
         _layoutRightToggleButton = CreateSetToggleButton(pointsRight: true, _toggleLayoutControls);
         panel.Controls.Add(_layoutRightToggleButton);
@@ -541,7 +570,8 @@ public sealed class OverlayForm : Form
                 graphics.DrawLine(pen, 7, 15, bounds.Width - 7, 15);
                 break;
             case WindowControlIcon.Maximize:
-                graphics.DrawRectangle(pen, 7, 6, bounds.Width - 15, 11);
+                graphics.DrawRectangle(pen, 9, 5, bounds.Width - 16, 10);
+                graphics.DrawRectangle(pen, 6, 8, bounds.Width - 16, 10);
                 break;
             case WindowControlIcon.Close:
                 graphics.DrawLine(pen, 8, 6, bounds.Width - 8, 17);
@@ -560,8 +590,6 @@ public sealed class OverlayForm : Form
                 break;
             case WindowControlIcon.Capture:
                 graphics.DrawRectangle(pen, 5, 6, bounds.Width - 11, 11);
-                graphics.DrawLine(pen, 8, 4, 13, 4);
-                graphics.DrawLine(pen, 8, 4, 6, 7);
                 break;
             case WindowControlIcon.Settings:
                 graphics.DrawEllipse(pen, bounds.Width / 2 - 5, 6, 10, 10);

@@ -13,12 +13,12 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
     private bool _buttonsVisible = true;
     private bool _moveAllWindows;
     private bool _crosshairEnabled;
-    private bool _launchMissingPrograms;
     private bool _layoutControlsExpanded;
     private bool _annotationControlsExpanded;
 
     public WindowMoveApplicationContext()
     {
+        _annotationManager.ToolbarStateChanged += SyncOverlayToggleStates;
         _notifyIcon = new NotifyIcon
         {
             Icon = SystemIcons.Application,
@@ -103,12 +103,14 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
                     SaveLayout,
                     LoadLayout,
                     DeleteLayout,
-                    () => _launchMissingPrograms,
-                    ToggleLaunchMissingPrograms,
                     () => _layoutControlsExpanded,
                     ToggleLayoutControls,
                     () => _annotationManager.ActiveTool,
                     ToggleAnnotationTool,
+                    () => _annotationManager.MarkerColor,
+                    _annotationManager.ChooseMarkerColor,
+                    () => _annotationManager.NextMarkerNumber,
+                    _annotationManager.SetNextMarkerNumber,
                     _annotationManager.UndoLast,
                     _annotationManager.ClearAll,
                     CaptureSelectedRegion,
@@ -160,12 +162,6 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
     private void ToggleCrosshair()
     {
         SetCrosshairEnabled(!_crosshairEnabled);
-    }
-
-    private void ToggleLaunchMissingPrograms()
-    {
-        _launchMissingPrograms = !_launchMissingPrograms;
-        SyncOverlayToggleStates();
     }
 
     private void ToggleLayoutControls()
@@ -243,7 +239,7 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
 
     private bool LoadLayout(string name)
     {
-        var succeeded = _layoutStore.Load(name, _launchMissingPrograms);
+        var succeeded = _layoutStore.Load(name);
         if (succeeded)
         {
             RefreshLayoutControls(name.Trim());

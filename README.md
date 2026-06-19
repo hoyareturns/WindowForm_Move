@@ -11,7 +11,6 @@ It does not inject code into other programs. Instead, it runs lightweight overla
 - Sends diagonal moves directly to the top-row leftmost or rightmost monitor
 - Places a window on the left, right, top, or bottom half of its current monitor
 - Saves named multi-window layouts and restores or deletes them from the button strip
-- Optionally launches missing programs before restoring a saved layout
 - Restores only matching windows; unmatched or login-required windows are left untouched
 - Provides Korean hover tooltips for every control
 - Collapses the layout profile controls when they are not needed
@@ -22,8 +21,9 @@ It does not inject code into other programs. Instead, it runs lightweight overla
 - Supports editing existing memo boxes, annotation undo, erasing, and clearing all annotations
 - Captures a user-dragged screen region with the visible annotations as a PNG file
 - Saves captures automatically using the configured folder and `{date}`, `{time}`, or `{datetime}` filename pattern
+- Opens the capture folder after saving unless that folder is already open in Explorer
 - Stores marker color/size and arrow color/thickness settings for the next run
-- Starts marker numbering at 1, automatically advances the saved next number, and allows overriding it in settings
+- Starts marker numbering at 1, automatically advances the toolbar number, and allows manual toolbar input
 - Collapses the annotation controls as a separate green `< >` tool set
 - The compact `ALL` button or tray menu applies monitor moves to all movable windows
 - Runs from the system tray
@@ -47,10 +47,9 @@ Published executable:
 2. Small buttons appear near the top-right of normal running windows.
 3. Use a window's own overlay buttons to move that window.
 4. Use the crosshair button to toggle the mouse guide.
-5. Expand the first green `< >` set and use `M` for numbered markers, `A` to drag an arrow and enter a memo, or `E` to erase one annotation. Click an existing memo box in `A` mode to edit it.
-6. Use `↶` to remove the latest annotation, `AC` to clear all, and the capture button to drag and save a selected region.
-7. Open the annotation settings button to choose marker/arrow appearance, capture folder, and filename pattern.
+5. Expand the first green `< >` set, choose the marker color/number, then use `①` for numbered markers, `↗` to drag an arrow and enter a memo, or `E` to erase one annotation. Click an existing memo box in arrow mode to edit it.
+6. Use `↶` to remove the latest annotation, `AC` to clear all, and the square capture button to drag and save a selected region. Press `Esc` to cancel capture.
+7. Open the annotation settings button to choose marker size, arrow appearance, capture folder, and filename pattern.
 8. Expand the second green `< >` set, type a layout name, then use `S`, `L`, or `D`.
-9. Turn on `R` before loading when missing programs should be launched automatically.
-10. Turn on `ALL` from the button strip or `Move all windows` from the tray menu when needed.
-11. Use the tray icon menu to hide the buttons or exit the app.
+9. Turn on `ALL` from the button strip or `Move all windows` from the tray menu when needed.
+10. Use the tray icon menu to hide the buttons or exit the app.

@@ -21,6 +21,13 @@ public sealed class CaptureSelectionForm : Form
 
     public Rectangle SelectedRegion => _selection;
 
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        Activate();
+        Focus();
+    }
+
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);

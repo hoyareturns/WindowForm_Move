@@ -98,58 +98,12 @@ public static class WindowController
         return result;
     }
 
-    public static int RestoreWindowLayout(
-        IReadOnlyList<WindowLayoutEntry> entries,
-        bool launchMissingPrograms)
+    public static int RestoreWindowLayout(IReadOnlyList<WindowLayoutEntry> entries)
     {
         var available = GetLayoutRestoreWindows().ToList();
         var usedHandles = new HashSet<IntPtr>();
         var missing = new List<WindowLayoutEntry>();
-        var restored = RestoreAvailableEntries(entries, available, usedHandles, missing);
-
-        if (!launchMissingPrograms || missing.Count == 0)
-        {
-            return restored;
-        }
-
-        var launchedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var entry in missing)
-        {
-            if (string.IsNullOrWhiteSpace(entry.ExecutablePath) ||
-                !File.Exists(entry.ExecutablePath) ||
-                !launchedPaths.Add(entry.ExecutablePath))
-            {
-                continue;
-            }
-
-            try
-            {
-                Process.Start(new ProcessStartInfo(entry.ExecutablePath)
-                {
-                    UseShellExecute = true
-                });
-            }
-            catch
-            {
-                // A protected or unavailable executable is skipped.
-            }
-        }
-
-        if (launchedPaths.Count == 0)
-        {
-            return restored;
-        }
-
-        Thread.Sleep(1500);
-        available = GetLayoutRestoreWindows()
-            .Where(window => !usedHandles.Contains(window.Handle))
-            .ToList();
-        restored += RestoreAvailableEntries(
-            missing,
-            available,
-            usedHandles,
-            new List<WindowLayoutEntry>());
-        return restored;
+        return RestoreAvailableEntries(entries, available, usedHandles, missing);
     }
 
     private static int RestoreAvailableEntries(

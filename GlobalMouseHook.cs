@@ -19,6 +19,7 @@ public sealed class GlobalMouseHook : IDisposable
     }
 
     public Func<GlobalMouseEvent, bool>? Handler { get; set; }
+    public bool TrackMouseMove { get; set; }
 
     public void Start()
     {
@@ -61,6 +62,11 @@ public sealed class GlobalMouseHook : IDisposable
                 WM_MOUSEMOVE => GlobalMouseEventType.Move,
                 _ => GlobalMouseEventType.Other
             };
+
+            if (type == GlobalMouseEventType.Move && !TrackMouseMove)
+            {
+                return CallNextHookEx(_hook, code, wParam, lParam);
+            }
 
             if (type != GlobalMouseEventType.Other)
             {
