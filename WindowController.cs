@@ -102,7 +102,7 @@ public static class WindowController
         IReadOnlyList<WindowLayoutEntry> entries,
         bool launchMissingPrograms)
     {
-        var available = GetMovableWindows().ToList();
+        var available = GetLayoutRestoreWindows().ToList();
         var usedHandles = new HashSet<IntPtr>();
         var missing = new List<WindowLayoutEntry>();
         var restored = RestoreAvailableEntries(entries, available, usedHandles, missing);
@@ -141,7 +141,7 @@ public static class WindowController
         }
 
         Thread.Sleep(1500);
-        available = GetMovableWindows()
+        available = GetLayoutRestoreWindows()
             .Where(window => !usedHandles.Contains(window.Handle))
             .ToList();
         restored += RestoreAvailableEntries(
@@ -197,7 +197,12 @@ public static class WindowController
                 ? targetScreen.WorkingArea
                 : MapRectToScreen(savedBounds, savedArea, targetScreen.WorkingArea);
 
+            var wasMinimized = IsIconic(match.Handle);
             ShowWindow(match.Handle, SW_RESTORE);
+            if (wasMinimized)
+            {
+                Thread.Sleep(40);
+            }
             MoveWindow(
                 match.Handle,
                 targetBounds.Left,
@@ -230,6 +235,40 @@ public static class WindowController
             var title = GetWindowTitle(handle);
             var processName = GetProcessName(handle);
             windows.Add(new WindowInfo(handle, title, processName));
+            return true;
+        }, IntPtr.Zero);
+
+        return windows;
+    }
+
+    private static IReadOnlyList<WindowInfo> GetLayoutRestoreWindows()
+    {
+        var windows = new List<WindowInfo>();
+        EnumWindows((handle, _) =>
+        {
+            if (handle == IntPtr.Zero ||
+                handle == ShellWindow ||
+                !IsWindowVisible(handle) ||
+                IsWindowCloaked(handle) ||
+                BelongsToCurrentProcess(handle) ||
+                !IsAppWindowCandidate(handle) ||
+                IsExcludedWindowClass(handle))
+            {
+                return true;
+            }
+
+            var title = GetWindowTitle(handle);
+            if (string.IsNullOrWhiteSpace(title))
+            {
+                return true;
+            }
+
+            if (!IsIconic(handle) && !IsMovableWindow(handle))
+            {
+                return true;
+            }
+
+            windows.Add(new WindowInfo(handle, title, GetProcessName(handle)));
             return true;
         }, IntPtr.Zero);
 
@@ -559,6 +598,11 @@ public static class WindowController
 
     private static Screen? FindTargetScreen(Screen fromScreen, MoveDirection direction)
     {
+        if (direction is MoveDirection.UpLeft or MoveDirection.UpRight)
+        {
+            return FindTopCornerScreen(direction);
+        }
+
         var fromBounds = fromScreen.Bounds;
         var candidate = Screen.AllScreens
             .Where(screen => screen.DeviceName != fromScreen.DeviceName)
@@ -574,6 +618,30 @@ public static class WindowController
             .FirstOrDefault();
 
         return candidate?.Screen;
+    }
+
+    private static Screen? FindTopCornerScreen(MoveDirection direction)
+    {
+        var screens = Screen.AllScreens;
+        if (screens.Length == 0)
+        {
+            return null;
+        }
+
+        var minimumTop = screens.Min(screen => screen.Bounds.Top);
+        var rowTolerance = Math.Max(1, screens.Min(screen => screen.Bounds.Height) / 2);
+        var topRow = screens
+            .Where(screen => screen.Bounds.Top <= minimumTop + rowTolerance)
+            .ToList();
+
+        if (topRow.Count == 0)
+        {
+            topRow = screens.ToList();
+        }
+
+        return direction == MoveDirection.UpLeft
+            ? topRow.OrderBy(screen => CenterOf(screen.Bounds).X).First()
+            : topRow.OrderByDescending(screen => CenterOf(screen.Bounds).X).First();
     }
 
     private static DirectionalScore? GetDirectionalScore(Rectangle from, Rectangle to, MoveDirection direction)
@@ -594,14 +662,6 @@ public static class WindowController
             MoveDirection.Up when toCenter.Y < fromCenter.Y => new DirectionalScore(
                 Math.Max(0, from.Top - to.Bottom),
                 GetIntervalDistance(from.Left, from.Right, to.Left, to.Right),
-                DistanceSquared(fromCenter, toCenter)),
-            MoveDirection.UpLeft when toCenter.Y < fromCenter.Y && toCenter.X <= fromCenter.X => new DirectionalScore(
-                Math.Max(0, from.Top - to.Bottom),
-                Math.Max(0, fromCenter.X - toCenter.X),
-                DistanceSquared(fromCenter, toCenter)),
-            MoveDirection.UpRight when toCenter.Y < fromCenter.Y && toCenter.X >= fromCenter.X => new DirectionalScore(
-                Math.Max(0, from.Top - to.Bottom),
-                Math.Max(0, toCenter.X - fromCenter.X),
                 DistanceSquared(fromCenter, toCenter)),
             MoveDirection.Down when toCenter.Y > fromCenter.Y => new DirectionalScore(
                 Math.Max(0, to.Top - from.Bottom),

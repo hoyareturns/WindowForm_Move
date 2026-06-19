@@ -2,8 +2,8 @@ namespace WindowForm_Move;
 
 public sealed class OverlayForm : Form
 {
-    private const int CollapsedWidth = 464;
-    private const int ExpandedWidth = 632;
+    private const int CollapsedWidth = 488;
+    private const int ExpandedWidth = 626;
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     private const int WS_EX_TOPMOST = 0x00000008;
     private const int WM_MOUSEACTIVATE = 0x0021;
@@ -28,7 +28,8 @@ public sealed class OverlayForm : Form
     private Button? _allButton;
     private Button? _crosshairButton;
     private Button? _launchMissingButton;
-    private Button? _layoutToggleButton;
+    private Button? _layoutLeftToggleButton;
+    private Button? _layoutRightToggleButton;
 
     public IntPtr TargetWindow { get; }
 
@@ -214,10 +215,10 @@ public sealed class OverlayForm : Form
         _toolTip.SetToolTip(_crosshairButton, "십자선 가이드 켜기/끄기");
         panel.Controls.Add(_crosshairButton);
 
-        _layoutToggleButton = CreateLayoutToggleButton();
-        panel.Controls.Add(_layoutToggleButton);
+        _layoutLeftToggleButton = CreateLayoutToggleButton(pointsRight: false);
+        panel.Controls.Add(_layoutLeftToggleButton);
 
-        _layoutCombo.Size = new Size(70, 23);
+        _layoutCombo.Size = new Size(50, 23);
         _layoutCombo.DropDownWidth = 150;
         _layoutCombo.Margin = new Padding(1);
         _layoutCombo.DropDownStyle = ComboBoxStyle.DropDown;
@@ -227,16 +228,19 @@ public sealed class OverlayForm : Form
         _layoutControls.Add(_layoutCombo);
         _toolTip.SetToolTip(_layoutCombo, "창 위치 이름 입력 또는 저장 목록 선택");
 
-        AddLayoutControl(panel, CreateLayoutButton(WindowControlIcon.SaveLayout, "현재 창 위치 저장", _saveLayout));
-        AddLayoutControl(panel, CreateLayoutButton(WindowControlIcon.LoadLayout, "선택한 창 위치 불러오기", _loadLayout));
-        AddLayoutControl(panel, CreateLayoutButton(WindowControlIcon.DeleteLayout, "선택한 창 위치 삭제", _deleteLayout));
+        AddLayoutControl(panel, CreateLayoutButton("S", "현재 창 위치 저장 (Save)", _saveLayout));
+        AddLayoutControl(panel, CreateLayoutButton("L", "선택한 창 위치 불러오기 (Load)", _loadLayout));
+        AddLayoutControl(panel, CreateLayoutButton("D", "선택한 창 위치 삭제 (Delete)", _deleteLayout));
 
-        _launchMissingButton = CreateFlatButton("RUN", 28);
+        _launchMissingButton = CreateFlatButton("R", 24);
         _launchMissingButton.Font = new Font("Segoe UI", 7F, FontStyle.Bold);
         _launchMissingButton.Click += (_, _) => _toggleLaunchMissingPrograms();
         _toolTip.SetToolTip(_launchMissingButton, "불러올 때 누락된 프로그램 자동 실행");
         panel.Controls.Add(_launchMissingButton);
         _layoutControls.Add(_launchMissingButton);
+
+        _layoutRightToggleButton = CreateLayoutToggleButton(pointsRight: true);
+        panel.Controls.Add(_layoutRightToggleButton);
 
         panel.Controls.Add(CreateMoveButton(WindowControlIcon.ArrowLeft, MoveDirection.Left));
         panel.Controls.Add(CreateMoveButton(WindowControlIcon.ArrowRight, MoveDirection.Right));
@@ -288,10 +292,11 @@ public sealed class OverlayForm : Form
         _layoutControls.Add(control);
     }
 
-    private Button CreateLayoutToggleButton()
+    private Button CreateLayoutToggleButton(bool pointsRight)
     {
         var button = CreateFlatButton(string.Empty, 22);
-        button.Paint += (_, e) => DrawLayoutToggleIcon(e.Graphics, button.ClientRectangle, _getLayoutControlsExpanded());
+        button.FlatAppearance.BorderColor = Color.FromArgb(72, 171, 124);
+        button.Paint += (_, e) => DrawLayoutToggleIcon(e.Graphics, button.ClientRectangle, pointsRight);
         button.Click += (_, _) => _toggleLayoutControls();
         return button;
     }
@@ -305,12 +310,17 @@ public sealed class OverlayForm : Form
         }
 
         Width = expanded ? ExpandedWidth : CollapsedWidth;
-        if (_layoutToggleButton is not null)
+        foreach (var toggleButton in new[] { _layoutLeftToggleButton, _layoutRightToggleButton })
         {
+            if (toggleButton is null)
+            {
+                continue;
+            }
+
             _toolTip.SetToolTip(
-                _layoutToggleButton,
-                expanded ? "창 위치 저장 영역 숨기기" : "창 위치 저장 영역 펼치기");
-            _layoutToggleButton.Invalidate();
+                toggleButton,
+                expanded ? "창 위치 저장 세트 숨기기" : "창 위치 저장 세트 펼치기");
+            toggleButton.Invalidate();
         }
     }
 
@@ -345,14 +355,16 @@ public sealed class OverlayForm : Form
         return button;
     }
 
-    private Button CreateLayoutButton(WindowControlIcon icon, string toolTip, Func<string, bool> action)
+    private Button CreateLayoutButton(string text, string toolTip, Func<string, bool> action)
     {
-        var button = CreateWindowIconButton(icon, () =>
+        var button = CreateFlatButton(text, 18);
+        button.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
+        button.Click += (_, _) =>
         {
             var succeeded = action(_layoutCombo.Text);
             _layoutCombo.BackColor = succeeded ? Color.White : Color.MistyRose;
             WindowController.ActivateWindow(TargetWindow);
-        }, false, 20);
+        };
         _toolTip.SetToolTip(button, toolTip);
         return button;
     }
@@ -428,22 +440,6 @@ public sealed class OverlayForm : Form
                 graphics.DrawLine(pen, bounds.Width / 2, 5, bounds.Width / 2, 18);
                 graphics.DrawLine(pen, 6, 11, bounds.Width - 6, 11);
                 break;
-            case WindowControlIcon.SaveLayout:
-                graphics.DrawRectangle(pen, 5, 5, bounds.Width - 11, 13);
-                graphics.DrawLine(pen, 8, 5, 8, 10);
-                graphics.DrawLine(pen, 8, 10, bounds.Width - 8, 10);
-                break;
-            case WindowControlIcon.LoadLayout:
-                graphics.DrawLine(pen, bounds.Width / 2, 5, bounds.Width / 2, 15);
-                graphics.DrawLine(pen, bounds.Width / 2, 15, bounds.Width / 2 - 4, 11);
-                graphics.DrawLine(pen, bounds.Width / 2, 15, bounds.Width / 2 + 4, 11);
-                graphics.DrawLine(pen, 5, 18, bounds.Width - 5, 18);
-                break;
-            case WindowControlIcon.DeleteLayout:
-                graphics.DrawRectangle(pen, 7, 8, bounds.Width - 15, 10);
-                graphics.DrawLine(pen, 5, 6, bounds.Width - 5, 6);
-                graphics.DrawLine(pen, 9, 4, bounds.Width - 9, 4);
-                break;
             case WindowControlIcon.HalfLeft:
             case WindowControlIcon.HalfRight:
             case WindowControlIcon.HalfTop:
@@ -453,14 +449,14 @@ public sealed class OverlayForm : Form
         }
     }
 
-    private static void DrawLayoutToggleIcon(Graphics graphics, Rectangle bounds, bool expanded)
+    private static void DrawLayoutToggleIcon(Graphics graphics, Rectangle bounds, bool pointsRight)
     {
         graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None;
         graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
-        using var pen = new Pen(Color.White, 2F);
+        using var pen = new Pen(Color.FromArgb(72, 171, 124), 2F);
         var centerX = bounds.Width / 2;
 
-        if (expanded)
+        if (!pointsRight)
         {
             graphics.DrawLine(pen, centerX + 3, 6, centerX - 2, 11);
             graphics.DrawLine(pen, centerX - 2, 11, centerX + 3, 16);
@@ -537,10 +533,7 @@ public sealed class OverlayForm : Form
         ArrowUpLeft,
         ArrowUpRight,
         ArrowDown,
-        Crosshair,
-        SaveLayout,
-        LoadLayout,
-        DeleteLayout
+        Crosshair
     }
 
     private void MoveTargets(MoveDirection direction)
