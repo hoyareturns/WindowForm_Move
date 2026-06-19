@@ -38,8 +38,8 @@ public sealed class AnnotationSettingsForm : Form
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
         AddRow(table, 0, "마커 색상", _markerColorButton);
         AddRow(table, 1, "마커 크기", _markerSizeInput);
-        AddRow(table, 2, "펜 색상", _penColorButton);
-        AddRow(table, 3, "펜 두께", _penWidthInput);
+        AddRow(table, 2, "화살표 색상", _penColorButton);
+        AddRow(table, 3, "화살표 두께", _penWidthInput);
         AddRow(table, 4, "다음 마커 번호", _nextMarkerNumberInput);
         Controls.Add(table);
 

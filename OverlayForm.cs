@@ -43,7 +43,7 @@ public sealed class OverlayForm : Form
     private Button? _annotationLeftToggleButton;
     private Button? _annotationRightToggleButton;
     private Button? _markerButton;
-    private Button? _penButton;
+    private Button? _arrowMemoButton;
     private Button? _eraserButton;
 
     public IntPtr TargetWindow { get; }
@@ -222,9 +222,9 @@ public sealed class OverlayForm : Form
                 : Color.FromArgb(45, 45, 45);
         }
 
-        if (_penButton is not null)
+        if (_arrowMemoButton is not null)
         {
-            _penButton.BackColor = _getAnnotationTool() == AnnotationTool.Pen
+            _arrowMemoButton.BackColor = _getAnnotationTool() == AnnotationTool.Arrow
                 ? Color.FromArgb(0, 105, 145)
                 : Color.FromArgb(45, 45, 45);
         }
@@ -275,18 +275,18 @@ public sealed class OverlayForm : Form
         _markerButton.Click += (_, _) => _toggleAnnotationTool(AnnotationTool.Marker);
         AddAnnotationControl(panel, _markerButton, "번호 마커 찍기");
 
-        _penButton = CreateFlatButton("P", 22);
-        _penButton.Click += (_, _) => _toggleAnnotationTool(AnnotationTool.Pen);
-        AddAnnotationControl(panel, _penButton, "화면에 자유선 그리기 (Pen)");
+        _arrowMemoButton = CreateFlatButton("A", 22);
+        _arrowMemoButton.Click += (_, _) => _toggleAnnotationTool(AnnotationTool.Arrow);
+        AddAnnotationControl(panel, _arrowMemoButton, "두 점으로 화살표+메모 추가, 기존 메모 클릭 시 수정");
 
         _eraserButton = CreateFlatButton("E", 22);
         _eraserButton.Click += (_, _) => _toggleAnnotationTool(AnnotationTool.Eraser);
-        AddAnnotationControl(panel, _eraserButton, "마커 또는 펜 한 획 지우기 (Eraser)");
+        AddAnnotationControl(panel, _eraserButton, "마커 또는 화살표 메모 지우기 (Eraser)");
 
-        AddAnnotationControl(panel, CreateCommandButton("↶", 24, _undoAnnotation), "마지막 마커 또는 선 실행취소");
+        AddAnnotationControl(panel, CreateCommandButton("↶", 24, _undoAnnotation), "마지막 마커 또는 화살표 실행취소");
         AddAnnotationControl(panel, CreateCommandButton("AC", 28, _clearAnnotations), "모든 마커와 선 지우기");
         AddAnnotationControl(panel, CreateWindowIconButton(WindowControlIcon.Capture, _captureSelectedRegion, false, 24), "드래그한 영역을 PNG로 저장");
-        AddAnnotationControl(panel, CreateWindowIconButton(WindowControlIcon.Settings, _showAnnotationSettings, false, 24), "마커와 펜 색상·두께 설정");
+        AddAnnotationControl(panel, CreateWindowIconButton(WindowControlIcon.Settings, _showAnnotationSettings, false, 24), "마커와 화살표 색상·두께 설정");
 
         _annotationRightToggleButton = CreateSetToggleButton(pointsRight: true, _toggleAnnotationControls);
         panel.Controls.Add(_annotationRightToggleButton);

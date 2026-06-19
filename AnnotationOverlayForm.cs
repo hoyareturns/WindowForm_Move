@@ -8,11 +8,6 @@ public sealed class AnnotationOverlayForm : Form
     private const int WS_EX_LAYERED = 0x00080000;
 
     private readonly Func<IReadOnlyList<AnnotationItem>> _getItems;
-    private readonly Action<Point> _addMarker;
-    private readonly Action<Point> _beginStroke;
-    private readonly Action<Point> _appendStroke;
-    private readonly Action _endStroke;
-    private readonly Action<Point> _eraseAt;
     private readonly Func<AnnotationSettings> _getSettings;
     private AnnotationTool _activeTool;
 
@@ -33,19 +28,9 @@ public sealed class AnnotationOverlayForm : Form
     public AnnotationOverlayForm(
         Rectangle virtualBounds,
         Func<IReadOnlyList<AnnotationItem>> getItems,
-        Action<Point> addMarker,
-        Action<Point> beginStroke,
-        Action<Point> appendStroke,
-        Action endStroke,
-        Action<Point> eraseAt,
         Func<AnnotationSettings> getSettings)
     {
         _getItems = getItems;
-        _addMarker = addMarker;
-        _beginStroke = beginStroke;
-        _appendStroke = appendStroke;
-        _endStroke = endStroke;
-        _eraseAt = eraseAt;
         _getSettings = getSettings;
 
         FormBorderStyle = FormBorderStyle.None;
@@ -101,57 +86,6 @@ public sealed class AnnotationOverlayForm : Form
         }
     }
 
-    protected override void OnMouseDown(MouseEventArgs e)
-    {
-        base.OnMouseDown(e);
-        if (e.Button != MouseButtons.Left)
-        {
-            return;
-        }
-
-        if (_activeTool == AnnotationTool.Marker)
-        {
-            _addMarker(PointToScreen(e.Location));
-        }
-        else if (_activeTool == AnnotationTool.Pen)
-        {
-            Capture = true;
-            _beginStroke(PointToScreen(e.Location));
-        }
-        else if (_activeTool == AnnotationTool.Eraser)
-        {
-            Capture = true;
-            _eraseAt(PointToScreen(e.Location));
-        }
-    }
-
-    protected override void OnMouseMove(MouseEventArgs e)
-    {
-        base.OnMouseMove(e);
-        if (_activeTool == AnnotationTool.Pen && Capture && e.Button == MouseButtons.Left)
-        {
-            _appendStroke(PointToScreen(e.Location));
-        }
-        else if (_activeTool == AnnotationTool.Eraser && Capture && e.Button == MouseButtons.Left)
-        {
-            _eraseAt(PointToScreen(e.Location));
-        }
-    }
-
-    protected override void OnMouseUp(MouseEventArgs e)
-    {
-        base.OnMouseUp(e);
-        if (_activeTool == AnnotationTool.Pen && Capture && e.Button == MouseButtons.Left)
-        {
-            Capture = false;
-            _endStroke();
-        }
-        else if (_activeTool == AnnotationTool.Eraser && Capture && e.Button == MouseButtons.Left)
-        {
-            Capture = false;
-        }
-    }
-
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
@@ -163,9 +97,9 @@ public sealed class AnnotationOverlayForm : Form
             {
                 DrawMarker(e.Graphics, marker);
             }
-            else if (item is DrawingStroke stroke)
+            else if (item is AnnotationArrow arrow)
             {
-                DrawStroke(e.Graphics, stroke);
+                DrawArrow(e.Graphics, arrow);
             }
         }
     }
@@ -175,7 +109,7 @@ public sealed class AnnotationOverlayForm : Form
         var hasAnnotations = _getItems().Any(item => item switch
         {
             ScreenMarker marker => Bounds.Contains(marker.Location),
-            DrawingStroke stroke => stroke.Points.Any(Bounds.Contains),
+            AnnotationArrow arrow => Bounds.Contains(arrow.Start) || Bounds.Contains(arrow.End),
             _ => false
         });
         if (_activeTool != AnnotationTool.None || hasAnnotations)
@@ -209,29 +143,48 @@ public sealed class AnnotationOverlayForm : Form
         graphics.DrawString(text, font, textBrush, center.X - size.Width / 2, center.Y - size.Height / 2);
     }
 
-    private void DrawStroke(Graphics graphics, DrawingStroke stroke)
+    private void DrawArrow(Graphics graphics, AnnotationArrow arrow)
     {
-        if (stroke.Points.Count == 0)
+        var start = PointToClient(arrow.Start);
+        var end = PointToClient(arrow.End);
+        if (arrow.IsPending && start == end)
+        {
+            using var startBrush = new SolidBrush(arrow.Color);
+            graphics.FillEllipse(startBrush, start.X - 4, start.Y - 4, 8, 8);
+            return;
+        }
+
+        using var arrowCap = new System.Drawing.Drawing2D.AdjustableArrowCap(5F, 6F, true);
+        using var pen = new Pen(arrow.Color, arrow.Width)
+        {
+            StartCap = System.Drawing.Drawing2D.LineCap.Round,
+            CustomEndCap = arrowCap,
+            LineJoin = System.Drawing.Drawing2D.LineJoin.Round
+        };
+        graphics.DrawLine(pen, start, end);
+
+        if (arrow.IsPending)
         {
             return;
         }
 
-        var points = stroke.Points.Select(PointToClient).ToArray();
-        using var pen = new Pen(stroke.Color, stroke.Width)
-        {
-            StartCap = System.Drawing.Drawing2D.LineCap.Round,
-            EndCap = System.Drawing.Drawing2D.LineCap.Round,
-            LineJoin = System.Drawing.Drawing2D.LineJoin.Round
-        };
+        var memoBounds = AnnotationGeometry.GetMemoBounds(arrow, Bounds);
+        memoBounds.Offset(-Left, -Top);
+        using var memoBack = new SolidBrush(Color.FromArgb(255, 252, 220));
+        using var memoBorder = new Pen(arrow.Color, 2F);
+        graphics.FillRectangle(memoBack, memoBounds);
+        graphics.DrawRectangle(memoBorder, Rectangle.Inflate(memoBounds, -1, -1));
 
-        if (points.Length == 1)
+        var textBounds = Rectangle.Inflate(memoBounds, -8, -6);
+        using var font = new Font("Segoe UI", 10F, FontStyle.Regular);
+        using var textBrush = new SolidBrush(Color.FromArgb(28, 28, 28));
+        using var format = new StringFormat
         {
-            graphics.DrawEllipse(pen, points[0].X, points[0].Y, 1, 1);
-        }
-        else
-        {
-            graphics.DrawLines(pen, points);
-        }
+            Alignment = StringAlignment.Near,
+            LineAlignment = StringAlignment.Center,
+            Trimming = StringTrimming.EllipsisWord
+        };
+        graphics.DrawString(arrow.Text, font, textBrush, textBounds, format);
     }
 }
 
@@ -239,12 +192,28 @@ public abstract record AnnotationItem;
 
 public sealed record ScreenMarker(int Number, Point Location) : AnnotationItem;
 
-public sealed record DrawingStroke(List<Point> Points, Color Color, float Width) : AnnotationItem;
+public sealed record AnnotationArrow : AnnotationItem
+{
+    public AnnotationArrow(Point start, Point end, Color color, float width)
+    {
+        Start = start;
+        End = end;
+        Color = color;
+        Width = width;
+    }
+
+    public Point Start { get; }
+    public Point End { get; set; }
+    public Color Color { get; }
+    public float Width { get; }
+    public string Text { get; set; } = string.Empty;
+    public bool IsPending { get; set; } = true;
+}
 
 public enum AnnotationTool
 {
     None,
     Marker,
-    Pen,
+    Arrow,
     Eraser
 }

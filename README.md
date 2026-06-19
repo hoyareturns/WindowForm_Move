@@ -18,10 +18,10 @@ It does not inject code into other programs. Instead, it runs lightweight overla
 - If there is no monitor in that direction, nudges the window inside the virtual desktop
 - Keeps maximized windows maximized after moving
 - Provides a click-through crosshair guide that follows the mouse across the current monitor
-- Adds numbered screen markers and freehand pen strokes without modifying the underlying program
-- Supports marker/pen undo, stroke erasing, and clearing all annotations
+- Adds numbered screen markers and two-point arrow memos without modifying the underlying program
+- Supports editing existing memo boxes, annotation undo, erasing, and clearing all annotations
 - Captures a user-dragged screen region with the visible annotations as a PNG file
-- Stores marker color/size and pen color/thickness settings for the next run
+- Stores marker color/size and arrow color/thickness settings for the next run
 - Starts marker numbering at 1, automatically advances the saved next number, and allows overriding it in settings
 - Collapses the annotation controls as a separate green `< >` tool set
 - The compact `ALL` button or tray menu applies monitor moves to all movable windows
@@ -46,7 +46,7 @@ Published executable:
 2. Small buttons appear near the top-right of normal running windows.
 3. Use a window's own overlay buttons to move that window.
 4. Use the crosshair button to toggle the mouse guide.
-5. Expand the first green `< >` set and use `M` for numbered markers, `P` for freehand drawing, or `E` to erase one marker or stroke.
+5. Expand the first green `< >` set and use `M` for numbered markers, `A` to click two arrow points and enter a memo, or `E` to erase one annotation. Click an existing memo box in `A` mode to edit it.
 6. Use `↶` to remove the latest annotation, `AC` to clear all, and the capture button to drag and save a selected region.
 7. Open the annotation settings button to choose marker color/size and pen color/thickness.
 8. Expand the second green `< >` set, type a layout name, then use `S`, `L`, or `D`.

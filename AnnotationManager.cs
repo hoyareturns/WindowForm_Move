@@ -8,7 +8,9 @@ public sealed class AnnotationManager : IDisposable
     private AnnotationOverlayForm? _overlay;
     private readonly AnnotationSettings _settings = AnnotationSettings.Load();
     private readonly GlobalMouseHook _mouseHook = new();
-    private DrawingStroke? _activeStroke;
+    private AnnotationArrow? _pendingArrow;
+    private AnnotationArrow? _queuedMemoArrow;
+    private bool _removeQueuedArrowOnCancel;
     private bool _dragging;
 
     public AnnotationManager()
@@ -26,10 +28,15 @@ public sealed class AnnotationManager : IDisposable
     public void SetActiveTool(AnnotationTool tool)
     {
         ActiveTool = tool;
+        if (tool != AnnotationTool.Arrow)
+        {
+            CancelPendingArrow();
+        }
+
         if (tool == AnnotationTool.None)
         {
             _dragging = false;
-            _activeStroke = null;
+            _queuedMemoArrow = null;
             _mouseHook.Stop();
         }
         else
@@ -47,13 +54,19 @@ public sealed class AnnotationManager : IDisposable
             return;
         }
 
+        var removed = _items[^1];
         _items.RemoveAt(_items.Count - 1);
+        if (ReferenceEquals(removed, _pendingArrow))
+        {
+            _pendingArrow = null;
+        }
         RefreshOverlays();
     }
 
     public void ClearAll()
     {
         _items.Clear();
+        _pendingArrow = null;
         RefreshOverlays();
     }
 
@@ -153,33 +166,23 @@ public sealed class AnnotationManager : IDisposable
         return _settings;
     }
 
-    private void BeginStroke(Point location)
+    private void AddArrowPoint(Point location)
     {
-        _activeStroke = new DrawingStroke(new List<Point> { location }, _settings.PenColor, _settings.PenWidth);
-        _items.Add(_activeStroke);
-        RefreshArea(location, location, _settings.PenWidth + 3F);
-    }
-
-    private void AppendStroke(Point location)
-    {
-        if (_activeStroke is null)
+        if (_pendingArrow is null)
         {
+            _pendingArrow = new AnnotationArrow(location, location, _settings.ArrowColor, _settings.ArrowWidth);
+            _items.Add(_pendingArrow);
+            RefreshArea(location, location, _settings.ArrowWidth + 8F);
             return;
         }
 
-        var last = _activeStroke.Points[^1];
-        if (Math.Abs(last.X - location.X) + Math.Abs(last.Y - location.Y) < 2)
-        {
-            return;
-        }
+        var arrow = _pendingArrow;
+        _pendingArrow = null;
+        arrow.End = location;
+        arrow.IsPending = false;
+        RefreshOverlays();
 
-        _activeStroke.Points.Add(location);
-        RefreshArea(last, location, _activeStroke.Width + 3F);
-    }
-
-    private void EndStroke()
-    {
-        _activeStroke = null;
+        QueueMemoEdit(arrow, removeOnCancel: true);
     }
 
     private void EnsureOverlay()
@@ -190,11 +193,6 @@ public sealed class AnnotationManager : IDisposable
             _overlay = new AnnotationOverlayForm(
                 virtualBounds,
                 GetItems,
-                AddMarker,
-                BeginStroke,
-                AppendStroke,
-                EndStroke,
-                EraseAt,
                 GetSettings);
         }
         else
@@ -242,9 +240,16 @@ public sealed class AnnotationManager : IDisposable
                     AddMarker(mouseEvent.Location);
                     _dragging = false;
                 }
-                else if (ActiveTool == AnnotationTool.Pen)
+                else if (ActiveTool == AnnotationTool.Arrow)
                 {
-                    BeginStroke(mouseEvent.Location);
+                    if (_pendingArrow is null && TryScheduleMemoEdit(mouseEvent.Location))
+                    {
+                        _dragging = false;
+                        return true;
+                    }
+
+                    AddArrowPoint(mouseEvent.Location);
+                    _dragging = false;
                 }
                 else if (ActiveTool == AnnotationTool.Eraser)
                 {
@@ -253,22 +258,15 @@ public sealed class AnnotationManager : IDisposable
                 return true;
 
             case GlobalMouseEventType.Move when _dragging:
-                if (ActiveTool == AnnotationTool.Pen)
-                {
-                    AppendStroke(mouseEvent.Location);
-                }
-                else if (ActiveTool == AnnotationTool.Eraser)
+                if (ActiveTool == AnnotationTool.Eraser)
                 {
                     EraseAt(mouseEvent.Location);
                 }
                 return true;
 
             case GlobalMouseEventType.LeftUp:
-                if (_dragging && ActiveTool == AnnotationTool.Pen)
-                {
-                    EndStroke();
-                }
                 _dragging = false;
+                OpenQueuedMemoAfterMouseUp();
                 return true;
         }
 
@@ -290,26 +288,18 @@ public sealed class AnnotationManager : IDisposable
             return DistanceSquared(marker.Location, location) <= radius * radius;
         }
 
-        if (item is not DrawingStroke stroke || stroke.Points.Count == 0)
+        if (item is not AnnotationArrow arrow)
         {
             return false;
         }
 
-        var tolerance = stroke.Width / 2F + 8F;
-        if (stroke.Points.Count == 1)
+        var memoBounds = AnnotationGeometry.GetMemoBounds(arrow, SystemInformation.VirtualScreen);
+        if (!arrow.IsPending && memoBounds.Contains(location))
         {
-            return DistanceSquared(stroke.Points[0], location) <= tolerance * tolerance;
+            return true;
         }
 
-        for (var index = 1; index < stroke.Points.Count; index++)
-        {
-            if (DistanceToSegment(location, stroke.Points[index - 1], stroke.Points[index]) <= tolerance)
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return DistanceToSegment(location, arrow.Start, arrow.End) <= arrow.Width / 2F + 8F;
     }
 
     private static float DistanceSquared(Point first, Point second)
@@ -357,16 +347,89 @@ public sealed class AnnotationManager : IDisposable
             return new Rectangle(marker.Location.X - radius, marker.Location.Y - radius, radius * 2 + 1, radius * 2 + 1);
         }
 
-        if (item is DrawingStroke stroke && stroke.Points.Count > 0)
+        if (item is AnnotationArrow arrow)
         {
-            var pad = (int)Math.Ceiling(stroke.Width + 3F);
-            return Rectangle.FromLTRB(
-                stroke.Points.Min(point => point.X) - pad,
-                stroke.Points.Min(point => point.Y) - pad,
-                stroke.Points.Max(point => point.X) + pad + 1,
-                stroke.Points.Max(point => point.Y) + pad + 1);
+            var pad = (int)Math.Ceiling(arrow.Width + 8F);
+            var arrowBounds = Rectangle.FromLTRB(
+                Math.Min(arrow.Start.X, arrow.End.X) - pad,
+                Math.Min(arrow.Start.Y, arrow.End.Y) - pad,
+                Math.Max(arrow.Start.X, arrow.End.X) + pad + 1,
+                Math.Max(arrow.Start.Y, arrow.End.Y) + pad + 1);
+            return arrow.IsPending
+                ? arrowBounds
+                : Rectangle.Union(arrowBounds, AnnotationGeometry.GetMemoBounds(arrow, SystemInformation.VirtualScreen));
         }
 
         return Rectangle.Empty;
+    }
+
+    private void EditArrowMemo(AnnotationArrow arrow, bool removeOnCancel)
+    {
+        var previousTool = ActiveTool;
+        SetActiveTool(AnnotationTool.None);
+        _overlay?.Hide();
+        try
+        {
+            using var form = new ArrowMemoForm(arrow.Text);
+            if (form.ShowDialog() == DialogResult.OK)
+            {
+                arrow.Text = form.MemoText;
+            }
+            else if (removeOnCancel)
+            {
+                _items.Remove(arrow);
+            }
+        }
+        finally
+        {
+            RefreshOverlays();
+            SetActiveTool(previousTool);
+        }
+    }
+
+    private bool TryScheduleMemoEdit(Point location)
+    {
+        var arrow = _items
+            .OfType<AnnotationArrow>()
+            .LastOrDefault(item => !item.IsPending &&
+                AnnotationGeometry.GetMemoBounds(item, SystemInformation.VirtualScreen).Contains(location));
+        if (arrow is null || _overlay is null || _overlay.IsDisposed)
+        {
+            return false;
+        }
+
+        QueueMemoEdit(arrow, removeOnCancel: false);
+        return true;
+    }
+
+    private void QueueMemoEdit(AnnotationArrow arrow, bool removeOnCancel)
+    {
+        _queuedMemoArrow = arrow;
+        _removeQueuedArrowOnCancel = removeOnCancel;
+    }
+
+    private void OpenQueuedMemoAfterMouseUp()
+    {
+        if (_queuedMemoArrow is null || _overlay is null || _overlay.IsDisposed)
+        {
+            return;
+        }
+
+        var arrow = _queuedMemoArrow;
+        var removeOnCancel = _removeQueuedArrowOnCancel;
+        _queuedMemoArrow = null;
+        _overlay.BeginInvoke(new Action(() => EditArrowMemo(arrow, removeOnCancel)));
+    }
+
+    private void CancelPendingArrow()
+    {
+        if (_pendingArrow is null)
+        {
+            return;
+        }
+
+        _items.Remove(_pendingArrow);
+        _pendingArrow = null;
+        RefreshOverlays();
     }
 }

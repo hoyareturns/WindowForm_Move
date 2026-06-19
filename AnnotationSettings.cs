@@ -17,6 +17,12 @@ public sealed class AnnotationSettings
     [JsonIgnore]
     public Color PenColor => Color.FromArgb(PenColorArgb);
 
+    [JsonIgnore]
+    public Color ArrowColor => PenColor;
+
+    [JsonIgnore]
+    public float ArrowWidth => PenWidth;
+
     public static AnnotationSettings Load()
     {
         try
