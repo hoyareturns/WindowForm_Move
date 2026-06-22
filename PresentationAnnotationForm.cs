@@ -18,6 +18,9 @@ public sealed class PresentationAnnotationForm : Form
     private bool _erasing;
     private ScreenStroke? _activeStroke;
     private AnnotationArrow? _memoToEdit;
+    private int _movingItemIndex = -1;
+    private Point _moveStart;
+    private AnnotationItem? _moveOriginal;
     private Form? _ownedToolbar;
 
     public PresentationAnnotationForm(
@@ -83,6 +86,8 @@ public sealed class PresentationAnnotationForm : Form
             AnnotationTool.Marker => Cursors.Cross,
             AnnotationTool.Arrow => Cursors.Cross,
             AnnotationTool.Pencil => Cursors.Cross,
+            AnnotationTool.Text => Cursors.IBeam,
+            AnnotationTool.Moving => Cursors.SizeAll,
             AnnotationTool.Eraser => Cursors.No,
             _ => Cursors.Default
         };
@@ -247,6 +252,30 @@ public sealed class PresentationAnnotationForm : Form
             _items.Add(_activeStroke);
             Capture = true;
         }
+        else if (_activeTool == AnnotationTool.Text)
+        {
+            var text = FindTextAt(location);
+            if (text is null)
+            {
+                text = new ScreenText(location, _settings.PenColor);
+                _items.Add(text);
+                EditText(text, removeOnCancel: true);
+            }
+            else
+            {
+                EditText(text, removeOnCancel: false);
+            }
+        }
+        else if (_activeTool == AnnotationTool.Moving)
+        {
+            _movingItemIndex = FindItemIndexAt(location);
+            if (_movingItemIndex >= 0)
+            {
+                _moveStart = location;
+                _moveOriginal = _items[_movingItemIndex];
+                Capture = true;
+            }
+        }
         else if (_activeTool == AnnotationTool.Eraser)
         {
             _erasing = true;
@@ -271,6 +300,13 @@ public sealed class PresentationAnnotationForm : Form
                 _activeStroke.Points.Add(location);
                 Invalidate();
             }
+        }
+        else if (_activeTool == AnnotationTool.Moving && _movingItemIndex >= 0 &&
+                 _moveOriginal is not null && e.Button == MouseButtons.Left)
+        {
+            var offset = new Size(location.X - _moveStart.X, location.Y - _moveStart.Y);
+            _items[_movingItemIndex] = TranslateItem(_moveOriginal, offset);
+            Invalidate();
         }
         else if (_activeTool == AnnotationTool.Eraser && _erasing && e.Button == MouseButtons.Left)
         {
@@ -309,6 +345,9 @@ public sealed class PresentationAnnotationForm : Form
             Invalidate();
         }
 
+        _movingItemIndex = -1;
+        _moveOriginal = null;
+
         _erasing = false;
     }
 
@@ -320,7 +359,7 @@ public sealed class PresentationAnnotationForm : Form
             return;
         }
 
-        if (_arrowStart is not null || _erasing)
+        if (_arrowStart is not null || _activeStroke is not null || _movingItemIndex >= 0 || _erasing)
         {
             CancelCurrentGesture();
         }
@@ -425,6 +464,41 @@ public sealed class PresentationAnnotationForm : Form
                 DistanceToSegment(location, arrow.Start, arrow.End) <= arrow.Width / 2F + 8F);
     }
 
+    private ScreenText? FindTextAt(Point location)
+    {
+        return _items
+            .OfType<ScreenText>()
+            .LastOrDefault(text => AnnotationGeometry.GetTextBounds(text, _virtualBounds).Contains(location));
+    }
+
+    private void EditText(ScreenText text, bool removeOnCancel)
+    {
+        using var form = new ArrowMemoForm(text.Text, text.Location, textOnly: true);
+        if (form.ShowDialog(this) == DialogResult.OK && !string.IsNullOrWhiteSpace(form.MemoText))
+        {
+            text.Text = form.MemoText;
+        }
+        else if (removeOnCancel || string.IsNullOrWhiteSpace(form.MemoText))
+        {
+            _items.Remove(text);
+        }
+
+        Invalidate();
+    }
+
+    private int FindItemIndexAt(Point location)
+    {
+        for (var index = _items.Count - 1; index >= 0; index--)
+        {
+            if (HitTest(_items[index], location))
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
     private void EraseAt(Point location)
     {
         for (var index = _items.Count - 1; index >= 0; index--)
@@ -467,12 +541,18 @@ public sealed class PresentationAnnotationForm : Form
             return stroke.Points.Count == 1 && DistanceSquared(stroke.Points[0], location) <= 64F;
         }
 
+        if (item is ScreenText text)
+        {
+            return AnnotationGeometry.GetTextBounds(text, _virtualBounds).Contains(location);
+        }
+
         if (item is not AnnotationArrow arrow)
         {
             return false;
         }
 
-        return AnnotationGeometry.GetMemoBounds(arrow, _virtualBounds).Contains(location) ||
+        return (!string.IsNullOrWhiteSpace(arrow.Text) &&
+                AnnotationGeometry.GetMemoBounds(arrow, _virtualBounds).Contains(location)) ||
                DistanceToSegment(location, arrow.Start, arrow.End) <= arrow.Width / 2F + 8F;
     }
 
@@ -497,6 +577,10 @@ public sealed class PresentationAnnotationForm : Form
             else if (item is ScreenStroke stroke)
             {
                 DrawStroke(graphics, stroke);
+            }
+            else if (item is ScreenText text)
+            {
+                DrawText(graphics, text);
             }
         }
     }
@@ -580,6 +664,50 @@ public sealed class PresentationAnnotationForm : Form
         }
     }
 
+    private void DrawText(Graphics graphics, ScreenText text)
+    {
+        var bounds = AnnotationGeometry.GetTextBounds(text, _virtualBounds);
+        bounds.Offset(-Left, -Top);
+        using var back = new SolidBrush(Color.FromArgb(255, 252, 220));
+        using var border = new Pen(text.Color, 2F);
+        graphics.FillRectangle(back, bounds);
+        graphics.DrawRectangle(border, Rectangle.Inflate(bounds, -1, -1));
+        var textBounds = Rectangle.Inflate(bounds, -8, -6);
+        TextRenderer.DrawText(
+            graphics,
+            text.Text,
+            SystemFonts.MessageBoxFont,
+            textBounds,
+            Color.FromArgb(28, 28, 28),
+            TextFormatFlags.WordBreak | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+    }
+
+    private static AnnotationItem TranslateItem(AnnotationItem item, Size offset)
+    {
+        return item switch
+        {
+            ScreenMarker marker => marker with { Location = Point.Add(marker.Location, offset) },
+            ScreenDot dot => dot with { Location = Point.Add(dot.Location, offset) },
+            ScreenStroke stroke => stroke with
+            {
+                Points = stroke.Points.Select(point => Point.Add(point, offset)).ToList()
+            },
+            AnnotationArrow arrow => new AnnotationArrow(
+                Point.Add(arrow.Start, offset),
+                Point.Add(arrow.End, offset),
+                arrow.Color,
+                arrow.Width)
+            {
+                Text = arrow.Text
+            },
+            ScreenText text => new ScreenText(Point.Add(text.Location, offset), text.Color)
+            {
+                Text = text.Text
+            },
+            _ => item
+        };
+    }
+
     private Bitmap RenderComposite()
     {
         var bitmap = new Bitmap(_frozenScreen.Width, _frozenScreen.Height, PixelFormat.Format32bppArgb);
@@ -604,6 +732,14 @@ public sealed class PresentationAnnotationForm : Form
         }
 
         _activeStroke = null;
+        if (_movingItemIndex >= 0 && _moveOriginal is not null && _movingItemIndex < _items.Count)
+        {
+            _items[_movingItemIndex] = _moveOriginal;
+            Invalidate();
+        }
+
+        _movingItemIndex = -1;
+        _moveOriginal = null;
         _erasing = false;
         _memoToEdit = null;
         Capture = false;

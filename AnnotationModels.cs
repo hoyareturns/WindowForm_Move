@@ -8,6 +8,11 @@ public sealed record ScreenDot(Point Location, Color Color) : AnnotationItem;
 
 public sealed record ScreenStroke(List<Point> Points, Color Color, float Width) : AnnotationItem;
 
+public sealed record ScreenText(Point Location, Color Color) : AnnotationItem
+{
+    public string Text { get; set; } = string.Empty;
+}
+
 public sealed record AnnotationArrow(Point Start, Point End, Color Color, float Width) : AnnotationItem
 {
     public string Text { get; set; } = string.Empty;
@@ -20,5 +25,7 @@ public enum AnnotationTool
     Marker,
     Arrow,
     Pencil,
+    Text,
+    Moving,
     Eraser
 }

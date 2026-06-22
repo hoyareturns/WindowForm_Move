@@ -17,6 +17,7 @@ public sealed class AnnotationSettings
     public bool ShowProgramSet { get; set; } = true;
     public int ToolbarColorArgb { get; set; } = Color.FromArgb(45, 45, 45).ToArgb();
     public bool MatchTargetWindowColor { get; set; }
+    public bool SharpIconRendering { get; set; }
 
     [JsonIgnore]
     public Color MarkerColor => Color.FromArgb(MarkerColorArgb);

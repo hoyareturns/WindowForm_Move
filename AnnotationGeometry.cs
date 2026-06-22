@@ -58,4 +58,20 @@ public static class AnnotationGeometry
         y = Math.Clamp(y, virtualBounds.Top, Math.Max(virtualBounds.Top, virtualBounds.Bottom - height));
         return new Rectangle(x, y, width, height);
     }
+
+    public static Rectangle GetTextBounds(ScreenText text, Rectangle virtualBounds)
+    {
+        var measured = string.IsNullOrWhiteSpace(text.Text)
+            ? new Size(MinimumMemoWidth - 16, MinimumMemoHeight - 12)
+            : TextRenderer.MeasureText(
+                text.Text,
+                SystemFonts.MessageBoxFont,
+                new Size(MaximumMemoWidth - 16, MaximumMemoHeight - 12),
+                TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
+        var width = Math.Clamp(measured.Width + 16, MinimumMemoWidth, MaximumMemoWidth);
+        var height = Math.Clamp(measured.Height + 12, MinimumMemoHeight, MaximumMemoHeight);
+        var x = Math.Clamp(text.Location.X, virtualBounds.Left, Math.Max(virtualBounds.Left, virtualBounds.Right - width));
+        var y = Math.Clamp(text.Location.Y, virtualBounds.Top, Math.Max(virtualBounds.Top, virtualBounds.Bottom - height));
+        return new Rectangle(x, y, width, height);
+    }
 }

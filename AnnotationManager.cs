@@ -21,6 +21,7 @@ public sealed class AnnotationManager : IDisposable
     public bool ShowProgramSet => _settings.ShowProgramSet;
     public Color ToolbarColor => _settings.ToolbarColor;
     public bool MatchTargetWindowColor => _settings.MatchTargetWindowColor;
+    public bool SharpIconRendering => _settings.SharpIconRendering;
     public event Action? ToolbarStateChanged;
     public event Action? PresentationStarted;
     public event Action? PresentationReady;

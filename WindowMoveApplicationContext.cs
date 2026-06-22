@@ -29,7 +29,7 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
         _notifyIcon = new NotifyIcon
         {
             Icon = SystemIcons.Application,
-            Text = "Window Move",
+            Text = "Smart_Window",
             Visible = true,
             ContextMenuStrip = BuildMenu()
         };
@@ -151,6 +151,7 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
                     () => _annotationManager.ShowProgramSet,
                     () => _annotationManager.ToolbarColor,
                     () => _annotationManager.MatchTargetWindowColor,
+                    () => _annotationManager.SharpIconRendering,
                     ExitThread);
             }
         }

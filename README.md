@@ -1,6 +1,6 @@
-# WindowForm_Move
+# Smart_Window
 
-WindowForm_Move adds a small floating button strip near the title bar of each normal running Windows program.
+Smart_Window adds a small floating button strip near the title bar of each normal running Windows program.
 
 It does not inject code into other programs. Instead, it runs lightweight overlays that follow each window and control the target windows through the Windows API.
 
@@ -25,7 +25,7 @@ It does not inject code into other programs. Instead, it runs lightweight overla
 - Opens the capture folder after saving unless that folder is already open in Explorer
 - Stores marker color/size and arrow color/thickness settings for the next run
 - Starts marker numbering at 1, automatically advances the toolbar number, and allows manual toolbar input
-- Keeps the initiating WindowForm_Move annotation button set over the frozen screen instead of opening a second toolbar
+- Keeps the initiating Smart_Window annotation button set over the frozen screen instead of opening a second toolbar
 - The compact `ALL` button or tray menu applies monitor moves to all movable windows
 - Runs from the system tray
 - Tray menu supports show/hide, all-window mode, crosshair guide, and exit
@@ -39,17 +39,17 @@ dotnet run
 Published executable:
 
 ```powershell
-.\bin\Release\net6.0-windows\win-x64\publish\WindowForm_Move.exe
+.\bin\Release\net6.0-windows\win-x64\publish\Smart_Window.exe
 ```
 
 ## Usage
 
-1. Start `WindowForm_Move`.
+1. Start `Smart_Window`.
 2. Small buttons appear near the top-right of normal running windows.
 3. Use a window's own overlay buttons to move that window.
 4. Use the crosshair button to toggle the mouse guide.
 5. Expand the first green `< >` set, choose the marker color/number, then select `●`, `①`, or `↗` to enter the frozen presentation mode. `●` adds a point without changing the marker number.
-6. Continue using the same WindowForm_Move button set for markers, arrow memos, erasing, undo, clear-all, capture, and settings. A notice appears to its left; press `Esc` to exit.
+6. Continue using the same Smart_Window button set for markers, arrow memos, erasing, undo, clear-all, capture, and settings. A notice appears to its left; press `Esc` to exit.
 7. Use the square capture button to save a selected region; press `Esc` to cancel capture.
 8. Open settings to choose marker size, arrow appearance, capture folder, and filename pattern.
 9. Expand the second green `< >` set, type a layout name, then use `S`, `L`, or `D`.

@@ -12,17 +12,18 @@ public sealed class AnnotationSettingsForm : Form
     private readonly CheckBox _showProgramSetInput;
     private readonly Button _toolbarColorButton;
     private readonly CheckBox _matchTargetColorInput;
+    private readonly CheckBox _sharpIconInput;
 
     public AnnotationSettingsForm(AnnotationSettings settings)
     {
-        Text = "WindowForm_Move 설정";
+        Text = "Smart_Window 설정";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterScreen;
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
         TopMost = true;
-        ClientSize = new Size(450, 408);
+        ClientSize = new Size(450, 432);
         Font = new Font("Segoe UI", 9F);
 
         _markerSizeInput = CreateNumberInput(settings.MarkerSize, 18, 60, 1);
@@ -42,6 +43,12 @@ public sealed class AnnotationSettingsForm : Form
         };
         _toolbarColorButton.Enabled = !_matchTargetColorInput.Checked;
         _matchTargetColorInput.CheckedChanged += (_, _) => _toolbarColorButton.Enabled = !_matchTargetColorInput.Checked;
+        _sharpIconInput = new CheckBox
+        {
+            Text = "아이콘 선명도 우선 (해제 시 부드럽게 표시)",
+            Checked = settings.SharpIconRendering,
+            AutoSize = true
+        };
 
         var table = new TableLayoutPanel
         {
@@ -73,18 +80,20 @@ public sealed class AnnotationSettingsForm : Form
         {
             Text = "툴바 색상",
             Location = new Point(14, 204),
-            Size = new Size(422, 60)
+            Size = new Size(422, 84)
         };
         _toolbarColorButton.Location = new Point(14, 24);
         _matchTargetColorInput.Location = new Point(104, 26);
+        _sharpIconInput.Location = new Point(104, 52);
         appearanceGroup.Controls.Add(_toolbarColorButton);
         appearanceGroup.Controls.Add(_matchTargetColorInput);
+        appearanceGroup.Controls.Add(_sharpIconInput);
         Controls.Add(appearanceGroup);
 
         var setGroup = new GroupBox
         {
             Text = "툴바 세트 표시",
-            Location = new Point(14, 270),
+            Location = new Point(14, 294),
             Size = new Size(422, 88)
         };
         var setPanel = new FlowLayoutPanel
@@ -102,8 +111,8 @@ public sealed class AnnotationSettingsForm : Form
 
         var cancel = new Button { Text = "취소", DialogResult = DialogResult.Cancel, Size = new Size(76, 28) };
         var ok = new Button { Text = "확인", DialogResult = DialogResult.OK, Size = new Size(76, 28) };
-        cancel.Location = new Point(278, 370);
-        ok.Location = new Point(360, 370);
+        cancel.Location = new Point(278, 394);
+        ok.Location = new Point(360, 394);
         Controls.Add(cancel);
         Controls.Add(ok);
         AcceptButton = ok;
@@ -122,6 +131,7 @@ public sealed class AnnotationSettingsForm : Form
         settings.ShowProgramSet = _showProgramSetInput.Checked;
         settings.ToolbarColorArgb = _toolbarColorButton.BackColor.ToArgb();
         settings.MatchTargetWindowColor = _matchTargetColorInput.Checked;
+        settings.SharpIconRendering = _sharpIconInput.Checked;
     }
 
     private static Button CreateColorButton(Color color)

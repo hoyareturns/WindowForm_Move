@@ -5,7 +5,7 @@ public sealed class OverlayForm : Form
     private const int CoreWidth = 468;
     private const int SetToggleAddition = 48;
     private const int LayoutExpandedAddition = 112;
-    private const int AnnotationExpandedAddition = 312;
+    private const int AnnotationExpandedAddition = 364;
     private const int ProgramExpandedAddition = 192;
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     private const int WS_EX_TOPMOST = 0x00000008;
@@ -48,6 +48,7 @@ public sealed class OverlayForm : Form
     private readonly Func<bool> _getShowProgramSet;
     private readonly Func<Color> _getToolbarColor;
     private readonly Func<bool> _getMatchTargetWindowColor;
+    private readonly Func<bool> _getSharpIconRendering;
     private readonly Action _exitRequested;
     private readonly ComboBox _layoutCombo = new();
     private readonly ComboBox _programCombo = new();
@@ -70,6 +71,8 @@ public sealed class OverlayForm : Form
     private Button? _dotButton;
     private Button? _arrowMemoButton;
     private Button? _pencilButton;
+    private Button? _textButton;
+    private Button? _movingButton;
     private Button? _eraserButton;
     private Button? _markerColorButton;
     private Button? _penColorButton;
@@ -127,6 +130,7 @@ public sealed class OverlayForm : Form
         Func<bool> getShowProgramSet,
         Func<Color> getToolbarColor,
         Func<bool> getMatchTargetWindowColor,
+        Func<bool> getSharpIconRendering,
         Action exitRequested)
     {
         TargetWindow = targetWindow;
@@ -166,6 +170,7 @@ public sealed class OverlayForm : Form
         _getShowProgramSet = getShowProgramSet;
         _getToolbarColor = getToolbarColor;
         _getMatchTargetWindowColor = getMatchTargetWindowColor;
+        _getSharpIconRendering = getSharpIconRendering;
         _exitRequested = exitRequested;
 
         FormBorderStyle = FormBorderStyle.None;
@@ -341,6 +346,16 @@ public sealed class OverlayForm : Form
             ApplyActiveState(_pencilButton, _getAnnotationTool() == AnnotationTool.Pencil);
         }
 
+        if (_textButton is not null)
+        {
+            ApplyActiveState(_textButton, _getAnnotationTool() == AnnotationTool.Text);
+        }
+
+        if (_movingButton is not null)
+        {
+            ApplyActiveState(_movingButton, _getAnnotationTool() == AnnotationTool.Moving);
+        }
+
         if (_eraserButton is not null)
         {
             ApplyActiveState(_eraserButton, _getAnnotationTool() == AnnotationTool.Eraser);
@@ -425,12 +440,10 @@ public sealed class OverlayForm : Form
         }
         AddAnnotationControl(panel, _markerNumberInput, "다음 마커 번호 입력 (마킹 후 자동 증가)");
 
-        _dotButton = CreateFlatButton("●", 24);
-        _dotButton.Click += (_, _) => _toggleAnnotationTool(AnnotationTool.Dot);
+        _dotButton = CreateAssetButton("marker_dot", () => _toggleAnnotationTool(AnnotationTool.Dot), 24);
         AddAnnotationControl(panel, _dotButton, "번호 없는 원형 포인트");
 
-        _markerButton = CreateFlatButton("①", 24);
-        _markerButton.Click += (_, _) => _toggleAnnotationTool(AnnotationTool.Marker);
+        _markerButton = CreateAssetButton("marker_number", () => _toggleAnnotationTool(AnnotationTool.Marker), 24);
         AddAnnotationControl(panel, _markerButton, "번호 마커 찍기");
 
         _penColorButton = CreateFlatButton(string.Empty, 24);
@@ -438,8 +451,10 @@ public sealed class OverlayForm : Form
         _penColorButton.Click += (_, _) => _choosePenColor();
         AddAnnotationControl(panel, _penColorButton, "연필과 화살표 색상 선택");
 
-        _arrowMemoButton = CreateFlatButton("↗", 24);
-        _arrowMemoButton.Click += (_, _) => _toggleAnnotationTool(AnnotationTool.Arrow);
+        _textButton = CreateAssetButton("marker_textbox", () => _toggleAnnotationTool(AnnotationTool.Text), 24);
+        AddAnnotationControl(panel, _textButton, "텍스트 상자 추가 또는 기존 텍스트 수정");
+
+        _arrowMemoButton = CreateAssetButton("arrow_note", () => _toggleAnnotationTool(AnnotationTool.Arrow), 24);
         AddAnnotationControl(panel, _arrowMemoButton, "드래그로 화살표+메모 추가, 기존 메모 클릭 시 수정");
 
         _pencilButton = CreateWindowIconButton(
@@ -449,12 +464,14 @@ public sealed class OverlayForm : Form
             24);
         AddAnnotationControl(panel, _pencilButton, "연필로 자유선 그리기");
 
-        AddAnnotationControl(panel, CreateCommandButton("↶", 24, _undoAnnotation), "마지막 마커 또는 화살표 실행취소");
+        _movingButton = CreateAssetButton("marker_moving", () => _toggleAnnotationTool(AnnotationTool.Moving), 24);
+        AddAnnotationControl(panel, _movingButton, "기존 마킹을 드래그하여 이동");
 
-        _eraserButton = CreateFlatButton("E", 22);
-        _eraserButton.Click += (_, _) => _toggleAnnotationTool(AnnotationTool.Eraser);
+        AddAnnotationControl(panel, CreateAssetButton("undo", _undoAnnotation, 24), "마지막 마커 또는 화살표 실행취소");
+
+        _eraserButton = CreateAssetButton("eraser", () => _toggleAnnotationTool(AnnotationTool.Eraser), 24);
         AddAnnotationControl(panel, _eraserButton, "마커 또는 화살표 메모 지우기 (Eraser)");
-        AddAnnotationControl(panel, CreateCommandButton("AC", 28, _clearAnnotations), "모든 마커와 선 지우기");
+        AddAnnotationControl(panel, CreateAssetButton("clear_all", _clearAnnotations, 26), "모든 마커와 선 지우기");
         AddAnnotationControl(panel, CreateWindowIconButton(WindowControlIcon.Capture, _captureSelectedRegion, false, 24), "드래그한 영역을 PNG로 저장");
 
         _annotationRightToggleButton = CreateSetToggleButton(pointsRight: true, _toggleAnnotationControls);
@@ -512,12 +529,12 @@ public sealed class OverlayForm : Form
         panel.Controls.Add(CreateHalfButton(WindowControlIcon.HalfTop, WindowHalf.Top));
         panel.Controls.Add(CreateHalfButton(WindowControlIcon.HalfBottom, WindowHalf.Bottom));
 
-        var appExitButton = CreateWindowIconButton(WindowControlIcon.Close, _exitRequested, false);
-        _toolTip.SetToolTip(appExitButton, "WindowForm_Move 종료");
+        var appExitButton = CreateWindowIconButton(WindowControlIcon.AppExit, _exitRequested, false);
+        _toolTip.SetToolTip(appExitButton, "Smart_Window 종료");
         panel.Controls.Add(appExitButton);
 
         var settingsButton = CreateWindowIconButton(WindowControlIcon.Settings, _showAnnotationSettings, false, 24);
-        _toolTip.SetToolTip(settingsButton, "WindowForm_Move 통합 설정");
+        _toolTip.SetToolTip(settingsButton, "Smart_Window 통합 설정");
         panel.Controls.Add(settingsButton);
 
         _allButton = CreateFlatButton("ALL", 34);
@@ -562,7 +579,12 @@ public sealed class OverlayForm : Form
     {
         var button = CreateFlatButton(string.Empty, 22);
         button.FlatAppearance.BorderColor = Color.FromArgb(72, 171, 124);
-        button.Paint += (_, e) => DrawLayoutToggleIcon(e.Graphics, button.ClientRectangle, pointsRight);
+        button.Paint += (_, e) => IconAssets.Draw(
+            e.Graphics,
+            button.ClientRectangle,
+            pointsRight ? "set_expand_right" : "set_expand_left",
+            Color.FromArgb(72, 171, 124),
+            _getSharpIconRendering());
         button.Click += (_, _) => toggleAction();
         return button;
     }
@@ -903,7 +925,12 @@ public sealed class OverlayForm : Form
         int width = 26)
     {
         var button = CreateFlatButton(string.Empty, width);
-        button.Paint += (_, e) => DrawWindowControlIcon(e.Graphics, button.ClientRectangle, icon, button.ForeColor);
+        button.Paint += (_, e) => IconAssets.Draw(
+            e.Graphics,
+            button.ClientRectangle,
+            GetIconAssetName(icon),
+            button.ForeColor,
+            _getSharpIconRendering());
         button.Click += (_, _) =>
         {
             if (!requiresTarget || (TargetWindow != IntPtr.Zero && WindowController.IsMovableWindow(TargetWindow)))
@@ -912,6 +939,44 @@ public sealed class OverlayForm : Form
             }
         };
         return button;
+    }
+
+    private Button CreateAssetButton(string assetName, Action action, int width = 26)
+    {
+        var button = CreateFlatButton(string.Empty, width);
+        button.Paint += (_, e) => IconAssets.Draw(
+            e.Graphics,
+            button.ClientRectangle,
+            assetName,
+            button.ForeColor,
+            _getSharpIconRendering());
+        button.Click += (_, _) => action();
+        return button;
+    }
+
+    private static string GetIconAssetName(WindowControlIcon icon)
+    {
+        return icon switch
+        {
+            WindowControlIcon.Minimize => "window_minimize",
+            WindowControlIcon.Maximize => "window_restore",
+            WindowControlIcon.Close => "window_close",
+            WindowControlIcon.AppExit => "app_exit",
+            WindowControlIcon.HalfLeft => "half_left",
+            WindowControlIcon.HalfRight => "half_right",
+            WindowControlIcon.HalfTop => "half_top",
+            WindowControlIcon.HalfBottom => "half_bottom",
+            WindowControlIcon.ArrowLeft => "move_left",
+            WindowControlIcon.ArrowRight => "move_right",
+            WindowControlIcon.ArrowUpLeft => "move_up_left",
+            WindowControlIcon.ArrowUpRight => "move_up_right",
+            WindowControlIcon.ArrowDown => "move_down",
+            WindowControlIcon.Crosshair => "crosshair",
+            WindowControlIcon.Capture => "capture",
+            WindowControlIcon.Settings => "settings",
+            WindowControlIcon.Pencil => "pencil",
+            _ => "settings"
+        };
     }
 
     private static Button CreateFlatButton(string text, int width = 26)
@@ -1065,6 +1130,7 @@ public sealed class OverlayForm : Form
         Minimize,
         Maximize,
         Close,
+        AppExit,
         HalfLeft,
         HalfRight,
         HalfTop,

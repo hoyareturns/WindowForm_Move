@@ -6,10 +6,10 @@ public sealed class ArrowMemoForm : Form
 
     private readonly Point _anchor;
 
-    public ArrowMemoForm(string currentText, Point anchor)
+    public ArrowMemoForm(string currentText, Point anchor, bool textOnly = false)
     {
         _anchor = anchor;
-        Text = "화살표 메모";
+        Text = textOnly ? "텍스트 추가" : "화살표 메모";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.Manual;
         MaximizeBox = false;
@@ -21,7 +21,7 @@ public sealed class ArrowMemoForm : Form
 
         var label = new Label
         {
-            Text = "화살표 끝에 표시할 메모",
+            Text = textOnly ? "화면에 표시할 텍스트" : "화살표 끝에 표시할 메모",
             AutoSize = true,
             Location = new Point(14, 14)
         };
