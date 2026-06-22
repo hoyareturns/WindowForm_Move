@@ -4,11 +4,14 @@ public sealed class ArrowMemoForm : Form
 {
     private readonly TextBox _memoInput = new();
 
-    public ArrowMemoForm(string currentText)
+    private readonly Point _anchor;
+
+    public ArrowMemoForm(string currentText, Point anchor)
     {
+        _anchor = anchor;
         Text = "화살표 메모";
         FormBorderStyle = FormBorderStyle.FixedDialog;
-        StartPosition = FormStartPosition.CenterScreen;
+        StartPosition = FormStartPosition.Manual;
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
@@ -46,6 +49,22 @@ public sealed class ArrowMemoForm : Form
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
+        var workingArea = Screen.FromPoint(_anchor).WorkingArea;
+        var x = _anchor.X + 18;
+        var y = _anchor.Y + 18;
+        if (x + Width > workingArea.Right)
+        {
+            x = _anchor.X - Width - 18;
+        }
+
+        if (y + Height > workingArea.Bottom)
+        {
+            y = _anchor.Y - Height - 18;
+        }
+
+        Location = new Point(
+            Math.Clamp(x, workingArea.Left, Math.Max(workingArea.Left, workingArea.Right - Width)),
+            Math.Clamp(y, workingArea.Top, Math.Max(workingArea.Top, workingArea.Bottom - Height)));
         _memoInput.Focus();
         _memoInput.SelectAll();
     }

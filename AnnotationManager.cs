@@ -14,7 +14,13 @@ public sealed class AnnotationManager : IDisposable
 
     public AnnotationTool ActiveTool { get; private set; }
     public Color MarkerColor => _settings.MarkerColor;
+    public Color PenColor => _settings.PenColor;
     public int NextMarkerNumber => _settings.NextMarkerNumber;
+    public bool ShowAnnotationSet => _settings.ShowAnnotationSet;
+    public bool ShowLayoutSet => _settings.ShowLayoutSet;
+    public bool ShowProgramSet => _settings.ShowProgramSet;
+    public Color ToolbarColor => _settings.ToolbarColor;
+    public bool MatchTargetWindowColor => _settings.MatchTargetWindowColor;
     public event Action? ToolbarStateChanged;
     public event Action? PresentationStarted;
     public event Action? PresentationReady;
@@ -25,6 +31,11 @@ public sealed class AnnotationManager : IDisposable
         _session?.PositionNotice(toolbarBounds);
     }
 
+    public void AttachPresentationToolbar(Form toolbar)
+    {
+        _session?.AttachToolbar(toolbar);
+    }
+
     public void ToggleTool(AnnotationTool tool)
     {
         if (_session is null || _session.IsDisposed)
@@ -33,7 +44,7 @@ public sealed class AnnotationManager : IDisposable
             return;
         }
 
-        _session.SetTool(tool);
+        _session.SetTool(ActiveTool == tool ? AnnotationTool.None : tool);
     }
 
     public void SetActiveTool(AnnotationTool tool)
@@ -74,6 +85,24 @@ public sealed class AnnotationManager : IDisposable
         if (dialog.ShowDialog(owner) == DialogResult.OK)
         {
             _settings.MarkerColorArgb = dialog.Color.ToArgb();
+            _settings.Save();
+            ToolbarStateChanged?.Invoke();
+        }
+    }
+
+    public void ChoosePenColor()
+    {
+        if (_session is not null && !_session.IsDisposed)
+        {
+            _session.ChoosePenColor();
+            return;
+        }
+
+        using var dialog = new ColorDialog { Color = _settings.PenColor, FullOpen = true };
+        var owner = Application.OpenForms.OfType<OverlayForm>().FirstOrDefault(form => form.Visible);
+        if (dialog.ShowDialog(owner) == DialogResult.OK)
+        {
+            _settings.PenColorArgb = dialog.Color.ToArgb();
             _settings.Save();
             ToolbarStateChanged?.Invoke();
         }
@@ -188,6 +217,14 @@ public sealed class AnnotationManager : IDisposable
             using var result = frozen.Clone(selector.SelectedRegion, PixelFormat.Format32bppArgb);
             var outputPath = CreateCapturePath();
             result.Save(outputPath, ImageFormat.Png);
+            var copied = TryCopyToClipboard(result);
+            MessageBox.Show(
+                copied
+                    ? $"캡처를 저장하고 클립보드에 복사했습니다.\n\n{outputPath}"
+                    : $"캡처를 저장했습니다.\n\n{outputPath}",
+                "캡처 완료",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
             ExplorerFolder.OpenIfNotOpen(Path.GetDirectoryName(outputPath)!);
         }
         catch (Exception exception)
@@ -261,5 +298,19 @@ public sealed class AnnotationManager : IDisposable
         }
 
         return path;
+    }
+
+    private static bool TryCopyToClipboard(Bitmap image)
+    {
+        try
+        {
+            using var clipboardImage = (Bitmap)image.Clone();
+            Clipboard.SetImage(clipboardImage);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

@@ -7,6 +7,7 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
     private readonly CrosshairOverlayForm _crosshairOverlay = new();
     private readonly AnnotationManager _annotationManager = new();
     private readonly WindowLayoutStore _layoutStore = new();
+    private readonly ProgramLaunchStore _programStore = new();
     private readonly NotifyIcon _notifyIcon;
     private ToolStripMenuItem? _moveAllMenuItem;
     private ToolStripMenuItem? _crosshairMenuItem;
@@ -15,6 +16,7 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
     private bool _crosshairEnabled;
     private bool _layoutControlsExpanded;
     private bool _annotationControlsExpanded;
+    private bool _programControlsExpanded;
     private bool _presentationActive;
     private IntPtr _presentationHostHandle;
 
@@ -123,10 +125,19 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
                     DeleteLayout,
                     () => _layoutControlsExpanded,
                     ToggleLayoutControls,
+                    _programStore.GetNames,
+                    name => SaveProgram(window.Handle, name),
+                    LoadProgram,
+                    name => EditProgram(window.Handle, name),
+                    DeleteProgram,
+                    () => _programControlsExpanded,
+                    ToggleProgramControls,
                     () => _annotationManager.ActiveTool,
                     tool => ToggleAnnotationTool(window.Handle, tool),
                     () => _annotationManager.MarkerColor,
                     _annotationManager.ChooseMarkerColor,
+                    () => _annotationManager.PenColor,
+                    _annotationManager.ChoosePenColor,
                     () => _annotationManager.NextMarkerNumber,
                     _annotationManager.SetNextMarkerNumber,
                     _annotationManager.UndoLast,
@@ -135,6 +146,11 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
                     _annotationManager.ShowSettings,
                     () => _annotationControlsExpanded,
                     ToggleAnnotationControls,
+                    () => _annotationManager.ShowAnnotationSet,
+                    () => _annotationManager.ShowLayoutSet,
+                    () => _annotationManager.ShowProgramSet,
+                    () => _annotationManager.ToolbarColor,
+                    () => _annotationManager.MatchTargetWindowColor,
                     ExitThread);
             }
         }
@@ -189,6 +205,7 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
         }
 
         host.SyncToggleStates();
+        _annotationManager.AttachPresentationToolbar(host);
         host.ShowForPresentation();
         _annotationManager.PositionPresentationNotice(host.Bounds);
     }
@@ -225,6 +242,13 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
     private void ToggleAnnotationControls()
     {
         _annotationControlsExpanded = !_annotationControlsExpanded;
+        SyncOverlayToggleStates();
+        SyncOverlays();
+    }
+
+    private void ToggleProgramControls()
+    {
+        _programControlsExpanded = !_programControlsExpanded;
         SyncOverlayToggleStates();
         SyncOverlays();
     }
@@ -314,6 +338,60 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
         foreach (var overlay in _overlays.Values)
         {
             overlay.RefreshLayoutNames(selectedName);
+        }
+    }
+
+    private string? SaveProgram(IntPtr hostHandle, string preferredName)
+    {
+        _overlays.TryGetValue(hostHandle, out var owner);
+        var savedName = _programStore.Save(preferredName, owner);
+        if (savedName is not null)
+        {
+            RefreshProgramControls(savedName);
+        }
+
+        return savedName;
+    }
+
+    private bool LoadProgram(string name)
+    {
+        var succeeded = _programStore.Load(name, out var error);
+        if (!succeeded && !string.IsNullOrWhiteSpace(error))
+        {
+            MessageBox.Show(error, "프로그램 실행 오류", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+
+        return succeeded;
+    }
+
+    private bool DeleteProgram(string name)
+    {
+        var succeeded = _programStore.Delete(name);
+        if (succeeded)
+        {
+            RefreshProgramControls(string.Empty);
+        }
+
+        return succeeded;
+    }
+
+    private string? EditProgram(IntPtr hostHandle, string name)
+    {
+        _overlays.TryGetValue(hostHandle, out var owner);
+        var editedName = _programStore.Edit(name, owner);
+        if (editedName is not null)
+        {
+            RefreshProgramControls(editedName);
+        }
+
+        return editedName;
+    }
+
+    private void RefreshProgramControls(string selectedName)
+    {
+        foreach (var overlay in _overlays.Values)
+        {
+            overlay.RefreshProgramNames(selectedName);
         }
     }
 

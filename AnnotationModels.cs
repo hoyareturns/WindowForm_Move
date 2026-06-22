@@ -2,9 +2,11 @@ namespace WindowForm_Move;
 
 public abstract record AnnotationItem;
 
-public sealed record ScreenMarker(int Number, Point Location) : AnnotationItem;
+public sealed record ScreenMarker(int Number, Point Location, Color Color) : AnnotationItem;
 
-public sealed record ScreenDot(Point Location) : AnnotationItem;
+public sealed record ScreenDot(Point Location, Color Color) : AnnotationItem;
+
+public sealed record ScreenStroke(List<Point> Points, Color Color, float Width) : AnnotationItem;
 
 public sealed record AnnotationArrow(Point Start, Point End, Color Color, float Width) : AnnotationItem
 {
@@ -17,5 +19,6 @@ public enum AnnotationTool
     Dot,
     Marker,
     Arrow,
+    Pencil,
     Eraser
 }

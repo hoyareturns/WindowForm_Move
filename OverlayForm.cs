@@ -2,10 +2,11 @@ namespace WindowForm_Move;
 
 public sealed class OverlayForm : Form
 {
-    private const int CollapsedWidth = 536;
+    private const int CoreWidth = 468;
+    private const int SetToggleAddition = 48;
     private const int LayoutExpandedAddition = 112;
-    private const int AnnotationExpandedAddition = 286;
-    private const int PresentationWidth = 338;
+    private const int AnnotationExpandedAddition = 312;
+    private const int ProgramExpandedAddition = 192;
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     private const int WS_EX_TOPMOST = 0x00000008;
     private const int WM_MOUSEACTIVATE = 0x0021;
@@ -21,10 +22,19 @@ public sealed class OverlayForm : Form
     private readonly Func<string, bool> _deleteLayout;
     private readonly Func<bool> _getLayoutControlsExpanded;
     private readonly Action _toggleLayoutControls;
+    private readonly Func<IReadOnlyList<string>> _getProgramNames;
+    private readonly Func<string, string?> _saveProgram;
+    private readonly Func<string, bool> _loadProgram;
+    private readonly Func<string, string?> _editProgram;
+    private readonly Func<string, bool> _deleteProgram;
+    private readonly Func<bool> _getProgramControlsExpanded;
+    private readonly Action _toggleProgramControls;
     private readonly Func<AnnotationTool> _getAnnotationTool;
     private readonly Action<AnnotationTool> _toggleAnnotationTool;
     private readonly Func<Color> _getMarkerColor;
     private readonly Action _chooseMarkerColor;
+    private readonly Func<Color> _getPenColor;
+    private readonly Action _choosePenColor;
     private readonly Func<int> _getNextMarkerNumber;
     private readonly Action<int> _setNextMarkerNumber;
     private readonly Action _undoAnnotation;
@@ -33,25 +43,36 @@ public sealed class OverlayForm : Form
     private readonly Action _showAnnotationSettings;
     private readonly Func<bool> _getAnnotationControlsExpanded;
     private readonly Action _toggleAnnotationControls;
+    private readonly Func<bool> _getShowAnnotationSet;
+    private readonly Func<bool> _getShowLayoutSet;
+    private readonly Func<bool> _getShowProgramSet;
+    private readonly Func<Color> _getToolbarColor;
+    private readonly Func<bool> _getMatchTargetWindowColor;
     private readonly Action _exitRequested;
     private readonly ComboBox _layoutCombo = new();
+    private readonly ComboBox _programCombo = new();
     private readonly ToolTip _toolTip = new();
     private readonly List<Control> _layoutControls = new();
     private readonly List<Control> _annotationControls = new();
-    private readonly HashSet<Control> _presentationControls = new();
-    private FlowLayoutPanel? _buttonPanel;
-    private bool _presentationMode;
+    private readonly List<Control> _programControls = new();
+    private bool _updatingMarkerNumber;
+    private Color? _sampledTargetColor;
+    private DateTime _nextTargetColorSampleUtc;
     private Button? _allButton;
     private Button? _crosshairButton;
     private Button? _layoutLeftToggleButton;
     private Button? _layoutRightToggleButton;
     private Button? _annotationLeftToggleButton;
     private Button? _annotationRightToggleButton;
+    private Button? _programLeftToggleButton;
+    private Button? _programRightToggleButton;
     private Button? _markerButton;
     private Button? _dotButton;
     private Button? _arrowMemoButton;
+    private Button? _pencilButton;
     private Button? _eraserButton;
     private Button? _markerColorButton;
+    private Button? _penColorButton;
     private NumericUpDown? _markerNumberInput;
 
     public IntPtr TargetWindow { get; }
@@ -80,10 +101,19 @@ public sealed class OverlayForm : Form
         Func<string, bool> deleteLayout,
         Func<bool> getLayoutControlsExpanded,
         Action toggleLayoutControls,
+        Func<IReadOnlyList<string>> getProgramNames,
+        Func<string, string?> saveProgram,
+        Func<string, bool> loadProgram,
+        Func<string, string?> editProgram,
+        Func<string, bool> deleteProgram,
+        Func<bool> getProgramControlsExpanded,
+        Action toggleProgramControls,
         Func<AnnotationTool> getAnnotationTool,
         Action<AnnotationTool> toggleAnnotationTool,
         Func<Color> getMarkerColor,
         Action chooseMarkerColor,
+        Func<Color> getPenColor,
+        Action choosePenColor,
         Func<int> getNextMarkerNumber,
         Action<int> setNextMarkerNumber,
         Action undoAnnotation,
@@ -92,6 +122,11 @@ public sealed class OverlayForm : Form
         Action showAnnotationSettings,
         Func<bool> getAnnotationControlsExpanded,
         Action toggleAnnotationControls,
+        Func<bool> getShowAnnotationSet,
+        Func<bool> getShowLayoutSet,
+        Func<bool> getShowProgramSet,
+        Func<Color> getToolbarColor,
+        Func<bool> getMatchTargetWindowColor,
         Action exitRequested)
     {
         TargetWindow = targetWindow;
@@ -105,10 +140,19 @@ public sealed class OverlayForm : Form
         _deleteLayout = deleteLayout;
         _getLayoutControlsExpanded = getLayoutControlsExpanded;
         _toggleLayoutControls = toggleLayoutControls;
+        _getProgramNames = getProgramNames;
+        _saveProgram = saveProgram;
+        _loadProgram = loadProgram;
+        _editProgram = editProgram;
+        _deleteProgram = deleteProgram;
+        _getProgramControlsExpanded = getProgramControlsExpanded;
+        _toggleProgramControls = toggleProgramControls;
         _getAnnotationTool = getAnnotationTool;
         _toggleAnnotationTool = toggleAnnotationTool;
         _getMarkerColor = getMarkerColor;
         _chooseMarkerColor = chooseMarkerColor;
+        _getPenColor = getPenColor;
+        _choosePenColor = choosePenColor;
         _getNextMarkerNumber = getNextMarkerNumber;
         _setNextMarkerNumber = setNextMarkerNumber;
         _undoAnnotation = undoAnnotation;
@@ -117,6 +161,11 @@ public sealed class OverlayForm : Form
         _showAnnotationSettings = showAnnotationSettings;
         _getAnnotationControlsExpanded = getAnnotationControlsExpanded;
         _toggleAnnotationControls = toggleAnnotationControls;
+        _getShowAnnotationSet = getShowAnnotationSet;
+        _getShowLayoutSet = getShowLayoutSet;
+        _getShowProgramSet = getShowProgramSet;
+        _getToolbarColor = getToolbarColor;
+        _getMatchTargetWindowColor = getMatchTargetWindowColor;
         _exitRequested = exitRequested;
 
         FormBorderStyle = FormBorderStyle.None;
@@ -124,7 +173,7 @@ public sealed class OverlayForm : Form
         TopMost = true;
         BackColor = Color.FromArgb(28, 28, 28);
         Opacity = 1.0;
-        Size = new Size(CollapsedWidth, 28);
+        Size = new Size(CoreWidth, 28);
         Padding = new Padding(2);
 
         _toolTip.InitialDelay = 350;
@@ -140,8 +189,11 @@ public sealed class OverlayForm : Form
         if (m.Msg == WM_MOUSEACTIVATE)
         {
             var comboBounds = _layoutCombo.RectangleToScreen(_layoutCombo.ClientRectangle);
+            var programComboBounds = _programCombo.RectangleToScreen(_programCombo.ClientRectangle);
             var markerNumberBounds = _markerNumberInput?.RectangleToScreen(_markerNumberInput.ClientRectangle) ?? Rectangle.Empty;
-            if (!comboBounds.Contains(Cursor.Position) && !markerNumberBounds.Contains(Cursor.Position))
+            if (!comboBounds.Contains(Cursor.Position) &&
+                !programComboBounds.Contains(Cursor.Position) &&
+                !markerNumberBounds.Contains(Cursor.Position))
             {
                 m.Result = new IntPtr(MA_NOACTIVATE);
                 return;
@@ -205,11 +257,12 @@ public sealed class OverlayForm : Form
 
     public void ShowForPresentation()
     {
-        _presentationMode = true;
         SyncToggleStates();
-        ApplyPresentationVisibility();
-        var primary = Screen.PrimaryScreen?.Bounds ?? SystemInformation.VirtualScreen;
-        SetBounds(primary.Right - Width - 4, primary.Top + 5, Width, Height);
+        var targetScreen = TargetWindow != IntPtr.Zero
+            ? Screen.FromHandle(TargetWindow)
+            : Screen.PrimaryScreen;
+        var screenBounds = targetScreen?.Bounds ?? SystemInformation.VirtualScreen;
+        SetBounds(screenBounds.Right - Width - 4, screenBounds.Top + 5, Width, Height);
         if (!Visible)
         {
             Show();
@@ -220,38 +273,22 @@ public sealed class OverlayForm : Form
 
     public void EndPresentationMode()
     {
-        if (!_presentationMode)
-        {
-            return;
-        }
-
-        _presentationMode = false;
-        if (_buttonPanel is not null)
-        {
-            foreach (Control control in _buttonPanel.Controls)
-            {
-                control.Visible = true;
-            }
-        }
-
         SyncToggleStates();
     }
 
     public void SyncToggleStates()
     {
+        ApplyToolbarTheme();
+
         if (_allButton is not null)
         {
-            _allButton.BackColor = _getMoveAllWindows()
-                ? Color.FromArgb(0, 105, 145)
-                : Color.FromArgb(45, 45, 45);
+            ApplyActiveState(_allButton, _getMoveAllWindows());
             _allButton.Invalidate();
         }
 
         if (_crosshairButton is not null)
         {
-            _crosshairButton.BackColor = _getCrosshairEnabled()
-                ? Color.FromArgb(0, 105, 145)
-                : Color.FromArgb(45, 45, 45);
+            ApplyActiveState(_crosshairButton, _getCrosshairEnabled());
             _crosshairButton.Invalidate();
         }
 
@@ -261,49 +298,57 @@ public sealed class OverlayForm : Form
             _markerColorButton.Invalidate();
         }
 
+        if (_penColorButton is not null)
+        {
+            _penColorButton.BackColor = _getPenColor();
+            _penColorButton.Invalidate();
+        }
+
         if (_markerNumberInput is not null)
         {
             var nextNumber = Math.Clamp(_getNextMarkerNumber(), 1, 9999);
             if (_markerNumberInput.Value != nextNumber)
             {
-                _markerNumberInput.Value = nextNumber;
+                _updatingMarkerNumber = true;
+                try
+                {
+                    _markerNumberInput.Value = nextNumber;
+                }
+                finally
+                {
+                    _updatingMarkerNumber = false;
+                }
             }
         }
 
         if (_markerButton is not null)
         {
-            _markerButton.BackColor = _getAnnotationTool() == AnnotationTool.Marker
-                ? Color.FromArgb(0, 105, 145)
-                : Color.FromArgb(45, 45, 45);
+            ApplyActiveState(_markerButton, _getAnnotationTool() == AnnotationTool.Marker);
         }
 
         if (_dotButton is not null)
         {
-            _dotButton.BackColor = _getAnnotationTool() == AnnotationTool.Dot
-                ? Color.FromArgb(0, 105, 145)
-                : Color.FromArgb(45, 45, 45);
+            ApplyActiveState(_dotButton, _getAnnotationTool() == AnnotationTool.Dot);
         }
 
         if (_arrowMemoButton is not null)
         {
-            _arrowMemoButton.BackColor = _getAnnotationTool() == AnnotationTool.Arrow
-                ? Color.FromArgb(0, 105, 145)
-                : Color.FromArgb(45, 45, 45);
+            ApplyActiveState(_arrowMemoButton, _getAnnotationTool() == AnnotationTool.Arrow);
+        }
+
+        if (_pencilButton is not null)
+        {
+            ApplyActiveState(_pencilButton, _getAnnotationTool() == AnnotationTool.Pencil);
         }
 
         if (_eraserButton is not null)
         {
-            _eraserButton.BackColor = _getAnnotationTool() == AnnotationTool.Eraser
-                ? Color.FromArgb(0, 105, 145)
-                : Color.FromArgb(45, 45, 45);
+            ApplyActiveState(_eraserButton, _getAnnotationTool() == AnnotationTool.Eraser);
         }
 
         SyncLayoutControlsVisibility();
+        SyncProgramControlsVisibility();
         SyncAnnotationControlsVisibility();
-        if (_presentationMode)
-        {
-            ApplyPresentationVisibility();
-        }
     }
 
     public void RefreshLayoutNames(string? selectedName)
@@ -319,6 +364,19 @@ public sealed class OverlayForm : Form
         _layoutCombo.BackColor = Color.White;
     }
 
+    public void RefreshProgramNames(string? selectedName)
+    {
+        var currentText = selectedName ?? _programCombo.Text;
+        var names = _getProgramNames();
+
+        _programCombo.BeginUpdate();
+        _programCombo.Items.Clear();
+        _programCombo.Items.AddRange(names.Cast<object>().ToArray());
+        _programCombo.EndUpdate();
+        _programCombo.Text = currentText;
+        _programCombo.BackColor = Color.White;
+    }
+
     private void BuildButtons()
     {
         var panel = new FlowLayoutPanel
@@ -329,7 +387,6 @@ public sealed class OverlayForm : Form
             Margin = Padding.Empty,
             Padding = Padding.Empty
         };
-        _buttonPanel = panel;
 
         _crosshairButton = CreateWindowIconButton(WindowControlIcon.Crosshair, _toggleCrosshair, false);
         _toolTip.SetToolTip(_crosshairButton, "십자선 가이드 켜기/끄기");
@@ -337,7 +394,6 @@ public sealed class OverlayForm : Form
 
         _annotationLeftToggleButton = CreateSetToggleButton(pointsRight: false, _toggleAnnotationControls);
         panel.Controls.Add(_annotationLeftToggleButton);
-        _presentationControls.Add(_annotationLeftToggleButton);
 
         _markerColorButton = CreateFlatButton(string.Empty, 24);
         _markerColorButton.FlatAppearance.BorderColor = Color.White;
@@ -354,9 +410,19 @@ public sealed class OverlayForm : Form
             Font = new Font("Segoe UI", 8F),
             TextAlign = HorizontalAlignment.Center,
             BorderStyle = BorderStyle.FixedSingle,
-            TabStop = false
+            TabStop = true
         };
-        _markerNumberInput.ValueChanged += (_, _) => _setNextMarkerNumber((int)_markerNumberInput.Value);
+        _markerNumberInput.ValueChanged += (_, _) =>
+        {
+            if (!_updatingMarkerNumber)
+            {
+                _setNextMarkerNumber((int)_markerNumberInput.Value);
+            }
+        };
+        foreach (Control child in _markerNumberInput.Controls)
+        {
+            child.TextChanged += MarkerNumberTextChanged;
+        }
         AddAnnotationControl(panel, _markerNumberInput, "다음 마커 번호 입력 (마킹 후 자동 증가)");
 
         _dotButton = CreateFlatButton("●", 24);
@@ -367,22 +433,32 @@ public sealed class OverlayForm : Form
         _markerButton.Click += (_, _) => _toggleAnnotationTool(AnnotationTool.Marker);
         AddAnnotationControl(panel, _markerButton, "번호 마커 찍기");
 
+        _penColorButton = CreateFlatButton(string.Empty, 24);
+        _penColorButton.FlatAppearance.BorderColor = Color.White;
+        _penColorButton.Click += (_, _) => _choosePenColor();
+        AddAnnotationControl(panel, _penColorButton, "연필과 화살표 색상 선택");
+
         _arrowMemoButton = CreateFlatButton("↗", 24);
         _arrowMemoButton.Click += (_, _) => _toggleAnnotationTool(AnnotationTool.Arrow);
         AddAnnotationControl(panel, _arrowMemoButton, "드래그로 화살표+메모 추가, 기존 메모 클릭 시 수정");
 
+        _pencilButton = CreateWindowIconButton(
+            WindowControlIcon.Pencil,
+            () => _toggleAnnotationTool(AnnotationTool.Pencil),
+            false,
+            24);
+        AddAnnotationControl(panel, _pencilButton, "연필로 자유선 그리기");
+
+        AddAnnotationControl(panel, CreateCommandButton("↶", 24, _undoAnnotation), "마지막 마커 또는 화살표 실행취소");
+
         _eraserButton = CreateFlatButton("E", 22);
         _eraserButton.Click += (_, _) => _toggleAnnotationTool(AnnotationTool.Eraser);
         AddAnnotationControl(panel, _eraserButton, "마커 또는 화살표 메모 지우기 (Eraser)");
-
-        AddAnnotationControl(panel, CreateCommandButton("↶", 24, _undoAnnotation), "마지막 마커 또는 화살표 실행취소");
         AddAnnotationControl(panel, CreateCommandButton("AC", 28, _clearAnnotations), "모든 마커와 선 지우기");
         AddAnnotationControl(panel, CreateWindowIconButton(WindowControlIcon.Capture, _captureSelectedRegion, false, 24), "드래그한 영역을 PNG로 저장");
-        AddAnnotationControl(panel, CreateWindowIconButton(WindowControlIcon.Settings, _showAnnotationSettings, false, 24), "마커 크기, 화살표, 캡처 설정");
 
         _annotationRightToggleButton = CreateSetToggleButton(pointsRight: true, _toggleAnnotationControls);
         panel.Controls.Add(_annotationRightToggleButton);
-        _presentationControls.Add(_annotationRightToggleButton);
 
         _layoutLeftToggleButton = CreateSetToggleButton(pointsRight: false, _toggleLayoutControls);
         panel.Controls.Add(_layoutLeftToggleButton);
@@ -404,6 +480,27 @@ public sealed class OverlayForm : Form
         _layoutRightToggleButton = CreateSetToggleButton(pointsRight: true, _toggleLayoutControls);
         panel.Controls.Add(_layoutRightToggleButton);
 
+        _programLeftToggleButton = CreateSetToggleButton(pointsRight: false, _toggleProgramControls);
+        panel.Controls.Add(_programLeftToggleButton);
+
+        _programCombo.Size = new Size(110, 23);
+        _programCombo.DropDownWidth = 320;
+        _programCombo.MaxDropDownItems = 20;
+        _programCombo.Margin = new Padding(1);
+        _programCombo.DropDownStyle = ComboBoxStyle.DropDown;
+        _programCombo.FlatStyle = FlatStyle.Flat;
+        _programCombo.Font = new Font("Segoe UI", 8.5F);
+        AddProgramControl(panel, _programCombo);
+        _toolTip.SetToolTip(_programCombo, "실행 항목 이름 입력 또는 저장 목록 선택");
+
+        AddProgramControl(panel, CreateProgramButton("S", "실행할 프로그램 또는 파일 등록 (Save)", SaveProgram));
+        AddProgramControl(panel, CreateProgramButton("R", "선택한 프로그램, 파일 또는 폴더 실행 (Run)", LoadProgram));
+        AddProgramControl(panel, CreateProgramButton("E", "표시 이름과 실행 정보 편집 (Edit)", EditProgram));
+        AddProgramControl(panel, CreateProgramButton("D", "선택한 실행 항목 삭제 (Delete)", DeleteProgram));
+
+        _programRightToggleButton = CreateSetToggleButton(pointsRight: true, _toggleProgramControls);
+        panel.Controls.Add(_programRightToggleButton);
+
         panel.Controls.Add(CreateMoveButton(WindowControlIcon.ArrowLeft, MoveDirection.Left));
         panel.Controls.Add(CreateMoveButton(WindowControlIcon.ArrowRight, MoveDirection.Right));
         panel.Controls.Add(CreateMoveButton(WindowControlIcon.ArrowUpLeft, MoveDirection.UpLeft));
@@ -418,6 +515,10 @@ public sealed class OverlayForm : Form
         var appExitButton = CreateWindowIconButton(WindowControlIcon.Close, _exitRequested, false);
         _toolTip.SetToolTip(appExitButton, "WindowForm_Move 종료");
         panel.Controls.Add(appExitButton);
+
+        var settingsButton = CreateWindowIconButton(WindowControlIcon.Settings, _showAnnotationSettings, false, 24);
+        _toolTip.SetToolTip(settingsButton, "WindowForm_Move 통합 설정");
+        panel.Controls.Add(settingsButton);
 
         _allButton = CreateFlatButton("ALL", 34);
         _allButton.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
@@ -445,7 +546,10 @@ public sealed class OverlayForm : Form
 
         Controls.Add(panel);
         RefreshLayoutNames(null);
+        RefreshProgramNames(null);
         SyncLayoutControlsVisibility();
+        SyncProgramControlsVisibility();
+        SyncAnnotationControlsVisibility();
     }
 
     private void AddLayoutControl(FlowLayoutPanel panel, Control control)
@@ -465,7 +569,8 @@ public sealed class OverlayForm : Form
 
     private void SyncLayoutControlsVisibility()
     {
-        var expanded = _getLayoutControlsExpanded();
+        var shown = _getShowLayoutSet();
+        var expanded = shown && _getLayoutControlsExpanded();
         foreach (var control in _layoutControls)
         {
             control.Visible = expanded;
@@ -479,6 +584,7 @@ public sealed class OverlayForm : Form
                 continue;
             }
 
+            toggleButton.Visible = shown;
             _toolTip.SetToolTip(
                 toggleButton,
                 expanded ? "창 위치 저장 세트 숨기기" : "창 위치 저장 세트 펼치기");
@@ -490,7 +596,6 @@ public sealed class OverlayForm : Form
     {
         panel.Controls.Add(control);
         _annotationControls.Add(control);
-        _presentationControls.Add(control);
         _toolTip.SetToolTip(control, toolTip);
     }
 
@@ -503,7 +608,8 @@ public sealed class OverlayForm : Form
 
     private void SyncAnnotationControlsVisibility()
     {
-        var expanded = _getAnnotationControlsExpanded();
+        var shown = _getShowAnnotationSet();
+        var expanded = shown && _getAnnotationControlsExpanded();
         foreach (var control in _annotationControls)
         {
             control.Visible = expanded;
@@ -517,6 +623,7 @@ public sealed class OverlayForm : Form
                 continue;
             }
 
+            toggleButton.Visible = shown;
             _toolTip.SetToolTip(toggleButton, expanded ? "마킹 도구 세트 숨기기" : "마킹 도구 세트 펼치기");
             toggleButton.Invalidate();
         }
@@ -524,29 +631,224 @@ public sealed class OverlayForm : Form
 
     private void UpdateToolbarWidth()
     {
-        Width = CollapsedWidth
-            + (_getLayoutControlsExpanded() ? LayoutExpandedAddition : 0)
-            + (_getAnnotationControlsExpanded() ? AnnotationExpandedAddition : 0);
+        var showLayout = _getShowLayoutSet();
+        var showAnnotation = _getShowAnnotationSet();
+        var showProgram = _getShowProgramSet();
+        Width = CoreWidth
+            + (showLayout ? SetToggleAddition : 0)
+            + (showAnnotation ? SetToggleAddition : 0)
+            + (showProgram ? SetToggleAddition : 0)
+            + (showLayout && _getLayoutControlsExpanded() ? LayoutExpandedAddition : 0)
+            + (showAnnotation && _getAnnotationControlsExpanded() ? AnnotationExpandedAddition : 0)
+            + (showProgram && _getProgramControlsExpanded() ? ProgramExpandedAddition : 0);
     }
 
-    private void ApplyPresentationVisibility()
+    private void AddProgramControl(FlowLayoutPanel panel, Control control)
     {
-        if (_buttonPanel is null)
+        panel.Controls.Add(control);
+        _programControls.Add(control);
+    }
+
+    private void SyncProgramControlsVisibility()
+    {
+        var shown = _getShowProgramSet();
+        var expanded = shown && _getProgramControlsExpanded();
+        foreach (var control in _programControls)
+        {
+            control.Visible = expanded;
+        }
+
+        UpdateToolbarWidth();
+        foreach (var toggleButton in new[] { _programLeftToggleButton, _programRightToggleButton })
+        {
+            if (toggleButton is null)
+            {
+                continue;
+            }
+
+            toggleButton.Visible = shown;
+            _toolTip.SetToolTip(toggleButton, expanded ? "프로그램 실행 세트 숨기기" : "프로그램 실행 세트 펼치기");
+            toggleButton.Invalidate();
+        }
+    }
+
+    private Button CreateProgramButton(string text, string toolTip, Action action)
+    {
+        var button = CreateFlatButton(text, 18);
+        button.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
+        button.Click += (_, _) => action();
+        _toolTip.SetToolTip(button, toolTip);
+        return button;
+    }
+
+    private void SaveProgram()
+    {
+        var savedName = _saveProgram(_programCombo.Text);
+        _programCombo.BackColor = savedName is null ? Color.MistyRose : Color.White;
+        if (savedName is not null)
+        {
+            RefreshProgramNames(savedName);
+        }
+    }
+
+    private void LoadProgram()
+    {
+        _programCombo.BackColor = _loadProgram(_programCombo.Text) ? Color.White : Color.MistyRose;
+    }
+
+    private void DeleteProgram()
+    {
+        var succeeded = _deleteProgram(_programCombo.Text);
+        _programCombo.BackColor = succeeded ? Color.White : Color.MistyRose;
+        if (succeeded)
+        {
+            RefreshProgramNames(string.Empty);
+        }
+    }
+
+    private void EditProgram()
+    {
+        var editedName = _editProgram(_programCombo.Text);
+        _programCombo.BackColor = editedName is null ? Color.MistyRose : Color.White;
+        if (editedName is not null)
+        {
+            RefreshProgramNames(editedName);
+        }
+    }
+
+    private void MarkerNumberTextChanged(object? sender, EventArgs e)
+    {
+        if (_updatingMarkerNumber || sender is not Control editor)
         {
             return;
         }
 
-        foreach (Control control in _buttonPanel.Controls)
+        if (int.TryParse(editor.Text.Trim(), out var number) && number is >= 1 and <= 9999)
         {
-            control.Visible = _presentationControls.Contains(control);
+            _setNextMarkerNumber(number);
+        }
+    }
+
+    private void ApplyToolbarTheme()
+    {
+        var background = GetEffectiveToolbarColor();
+        var foreground = GetContrastColor(background);
+        var hover = BlendForInteraction(background, 0.16F);
+        var pressed = BlendForInteraction(background, 0.28F);
+        BackColor = background;
+
+        foreach (var button in Controls.OfType<FlowLayoutPanel>().SelectMany(panel => panel.Controls.OfType<Button>()))
+        {
+            if (button == _markerColorButton || button == _penColorButton)
+            {
+                continue;
+            }
+
+            button.BackColor = background;
+            button.ForeColor = foreground;
+            button.FlatAppearance.MouseOverBackColor = hover;
+            button.FlatAppearance.MouseDownBackColor = pressed;
+            if (button != _annotationLeftToggleButton && button != _annotationRightToggleButton &&
+                button != _layoutLeftToggleButton && button != _layoutRightToggleButton &&
+                button != _programLeftToggleButton && button != _programRightToggleButton)
+            {
+                button.FlatAppearance.BorderColor = BlendForInteraction(background, 0.22F);
+            }
+        }
+    }
+
+    private static void ApplyActiveState(Button button, bool active)
+    {
+        if (!active)
+        {
+            return;
         }
 
-        foreach (var control in _annotationControls)
+        button.BackColor = Color.FromArgb(0, 105, 145);
+        button.ForeColor = Color.White;
+    }
+
+    private Color GetEffectiveToolbarColor()
+    {
+        if (!_getMatchTargetWindowColor() || !TrySampleTargetWindowColor(out var sampled))
         {
-            control.Visible = true;
+            return _getToolbarColor();
         }
 
-        Width = PresentationWidth;
+        return sampled;
+    }
+
+    private bool TrySampleTargetWindowColor(out Color color)
+    {
+        if (_sampledTargetColor is not null && DateTime.UtcNow < _nextTargetColorSampleUtc)
+        {
+            color = _sampledTargetColor.Value;
+            return true;
+        }
+
+        color = default;
+        if (!WindowController.TryGetWindowRectangle(TargetWindow, out var targetRect) ||
+            targetRect.Width < 40 || targetRect.Height < 20)
+        {
+            return false;
+        }
+
+        try
+        {
+            const int sampleSize = 9;
+            var centerX = targetRect.Left + Math.Clamp(targetRect.Width / 4, 20, targetRect.Width - 20);
+            var centerY = targetRect.Top + Math.Clamp(10, 4, targetRect.Height - 4);
+            using var bitmap = new Bitmap(sampleSize, sampleSize);
+            using (var graphics = Graphics.FromImage(bitmap))
+            {
+                graphics.CopyFromScreen(
+                    centerX - sampleSize / 2,
+                    centerY - sampleSize / 2,
+                    0,
+                    0,
+                    bitmap.Size,
+                    CopyPixelOperation.SourceCopy);
+            }
+
+            long red = 0;
+            long green = 0;
+            long blue = 0;
+            for (var y = 0; y < sampleSize; y++)
+            {
+                for (var x = 0; x < sampleSize; x++)
+                {
+                    var pixel = bitmap.GetPixel(x, y);
+                    red += pixel.R;
+                    green += pixel.G;
+                    blue += pixel.B;
+                }
+            }
+
+            var count = sampleSize * sampleSize;
+            color = Color.FromArgb((int)(red / count), (int)(green / count), (int)(blue / count));
+            _sampledTargetColor = color;
+            _nextTargetColorSampleUtc = DateTime.UtcNow.AddSeconds(1);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static Color GetContrastColor(Color background)
+    {
+        var luminance = 0.299 * background.R + 0.587 * background.G + 0.114 * background.B;
+        return luminance >= 155 ? Color.Black : Color.White;
+    }
+
+    private static Color BlendForInteraction(Color color, float amount)
+    {
+        var target = GetContrastColor(color) == Color.White ? Color.White : Color.Black;
+        return Color.FromArgb(
+            (int)(color.R + (target.R - color.R) * amount),
+            (int)(color.G + (target.G - color.G) * amount),
+            (int)(color.B + (target.B - color.B) * amount));
     }
 
     private Button CreateMoveButton(WindowControlIcon icon, MoveDirection direction)
@@ -601,7 +903,7 @@ public sealed class OverlayForm : Form
         int width = 26)
     {
         var button = CreateFlatButton(string.Empty, width);
-        button.Paint += (_, e) => DrawWindowControlIcon(e.Graphics, button.ClientRectangle, icon);
+        button.Paint += (_, e) => DrawWindowControlIcon(e.Graphics, button.ClientRectangle, icon, button.ForeColor);
         button.Click += (_, _) =>
         {
             if (!requiresTarget || (TargetWindow != IntPtr.Zero && WindowController.IsMovableWindow(TargetWindow)))
@@ -631,11 +933,11 @@ public sealed class OverlayForm : Form
         return button;
     }
 
-    private static void DrawWindowControlIcon(Graphics graphics, Rectangle bounds, WindowControlIcon icon)
+    private static void DrawWindowControlIcon(Graphics graphics, Rectangle bounds, WindowControlIcon icon, Color iconColor)
     {
         graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None;
         graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
-        using var pen = new Pen(Color.White, 2F)
+        using var pen = new Pen(iconColor, 2F)
         {
             StartCap = System.Drawing.Drawing2D.LineCap.Square,
             EndCap = System.Drawing.Drawing2D.LineCap.Square,
@@ -672,6 +974,12 @@ public sealed class OverlayForm : Form
             case WindowControlIcon.Settings:
                 graphics.DrawEllipse(pen, bounds.Width / 2 - 5, 6, 10, 10);
                 graphics.DrawEllipse(pen, bounds.Width / 2 - 1, 10, 2, 2);
+                break;
+            case WindowControlIcon.Pencil:
+                graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                graphics.DrawLine(pen, 7, 16, bounds.Width - 7, 6);
+                graphics.DrawLine(pen, 8, 17, 5, 18);
+                graphics.DrawLine(pen, 7, 14, 10, 17);
                 break;
             case WindowControlIcon.HalfLeft:
             case WindowControlIcon.HalfRight:
@@ -748,7 +1056,7 @@ public sealed class OverlayForm : Form
         };
 
         graphics.DrawRectangle(pen, frame);
-        using var brush = new SolidBrush(Color.White);
+        using var brush = new SolidBrush(pen.Color);
         graphics.FillRectangle(brush, fill);
     }
 
@@ -768,7 +1076,8 @@ public sealed class OverlayForm : Form
         ArrowDown,
         Crosshair,
         Capture,
-        Settings
+        Settings,
+        Pencil
     }
 
     private void MoveTargets(MoveDirection direction)

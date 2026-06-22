@@ -12,6 +12,11 @@ public sealed class AnnotationSettings
     public float PenWidth { get; set; } = 3F;
     public string CaptureDirectory { get; set; } = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
     public string CaptureFileNamePattern { get; set; } = "{date}_{time}";
+    public bool ShowAnnotationSet { get; set; } = true;
+    public bool ShowLayoutSet { get; set; } = true;
+    public bool ShowProgramSet { get; set; } = true;
+    public int ToolbarColorArgb { get; set; } = Color.FromArgb(45, 45, 45).ToArgb();
+    public bool MatchTargetWindowColor { get; set; }
 
     [JsonIgnore]
     public Color MarkerColor => Color.FromArgb(MarkerColorArgb);
@@ -21,6 +26,9 @@ public sealed class AnnotationSettings
 
     [JsonIgnore]
     public Color ArrowColor => PenColor;
+
+    [JsonIgnore]
+    public Color ToolbarColor => Color.FromArgb(ToolbarColorArgb);
 
     [JsonIgnore]
     public float ArrowWidth => PenWidth;
