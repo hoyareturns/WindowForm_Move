@@ -10,14 +10,22 @@ public sealed class AnnotationSettings
     public int NextMarkerNumber { get; set; } = 1;
     public int PenColorArgb { get; set; } = Color.FromArgb(0, 170, 230).ToArgb();
     public float PenWidth { get; set; } = 3F;
+    public string MemoFontName { get; set; } = "Segoe UI Semibold";
+    public float MemoFontSize { get; set; } = 10F;
     public string CaptureDirectory { get; set; } = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
     public string CaptureFileNamePattern { get; set; } = "{date}_{time}";
     public bool ShowAnnotationSet { get; set; } = true;
     public bool ShowLayoutSet { get; set; } = true;
     public bool ShowProgramSet { get; set; } = true;
+    public bool ExpandAnnotationSetOnOpen { get; set; }
+    public bool ExpandLayoutSetOnOpen { get; set; }
+    public bool ExpandProgramSetOnOpen { get; set; }
+    public bool StartToolbarExpanded { get; set; }
     public int ToolbarColorArgb { get; set; } = Color.FromArgb(45, 45, 45).ToArgb();
     public bool MatchTargetWindowColor { get; set; }
     public bool SharpIconRendering { get; set; }
+    public bool AutoStartWithWindows { get; set; }
+    public Dictionary<string, ButtonPreference> ButtonPreferences { get; set; } = new();
 
     [JsonIgnore]
     public Color MarkerColor => Color.FromArgb(MarkerColorArgb);
@@ -48,6 +56,7 @@ public sealed class AnnotationSettings
             settings.CaptureFileNamePattern = string.IsNullOrWhiteSpace(settings.CaptureFileNamePattern)
                 ? "{date}_{time}"
                 : settings.CaptureFileNamePattern;
+            settings.EnsureButtonPreferences();
             return settings;
         }
         catch
@@ -60,6 +69,7 @@ public sealed class AnnotationSettings
     {
         try
         {
+            EnsureButtonPreferences();
             var path = GetSettingsPath();
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(path, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
@@ -67,6 +77,33 @@ public sealed class AnnotationSettings
         catch
         {
             // Drawing remains usable with the current in-memory settings.
+        }
+    }
+
+    public ButtonPreference GetButtonPreference(string id)
+    {
+        EnsureButtonPreferences();
+        return ButtonPreferences[id];
+    }
+
+    public void EnsureButtonPreferences()
+    {
+        ButtonPreferences ??= new Dictionary<string, ButtonPreference>();
+        foreach (var definition in ButtonCatalog.All)
+        {
+            if (!ButtonPreferences.TryGetValue(definition.Id, out var preference) || preference is null)
+            {
+                preference = new ButtonPreference();
+                ButtonPreferences[definition.Id] = preference;
+            }
+
+            if (definition.Required)
+            {
+                preference.Visible = true;
+            }
+
+            preference.DisplayName ??= string.Empty;
+            preference.Shortcut ??= string.Empty;
         }
     }
 

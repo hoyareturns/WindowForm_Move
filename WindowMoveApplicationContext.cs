@@ -8,7 +8,9 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
     private readonly AnnotationManager _annotationManager = new();
     private readonly WindowLayoutStore _layoutStore = new();
     private readonly ProgramLaunchStore _programStore = new();
+    private readonly GlobalHotkeyManager _hotkeyManager = new();
     private readonly NotifyIcon _notifyIcon;
+    private AnnotationToolForm? _annotationToolForm;
     private ToolStripMenuItem? _moveAllMenuItem;
     private ToolStripMenuItem? _crosshairMenuItem;
     private bool _buttonsVisible = true;
@@ -22,10 +24,16 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
 
     public WindowMoveApplicationContext()
     {
+        _layoutControlsExpanded = _annotationManager.ExpandLayoutSetOnOpen;
+        _annotationControlsExpanded = _annotationManager.ExpandAnnotationSetOnOpen;
+        _programControlsExpanded = _annotationManager.ExpandProgramSetOnOpen;
         _annotationManager.ToolbarStateChanged += SyncOverlayToggleStates;
+        _annotationManager.ToolbarDefaultsChanged += ApplyToolbarDefaults;
         _annotationManager.PresentationStarted += BeginPresentation;
         _annotationManager.PresentationReady += ShowPresentationToolbar;
         _annotationManager.PresentationEnded += EndPresentation;
+        _annotationManager.TargetSelectionStarted += BeginTargetSelection;
+        _annotationManager.TargetSelectionEnded += EndTargetSelection;
         _notifyIcon = new NotifyIcon
         {
             Icon = SystemIcons.Application,
@@ -40,6 +48,7 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
         _scanTimer.Tick += (_, _) => SyncOverlays();
         _scanTimer.Start();
         SyncOverlays();
+        RebuildHotkeys(showFailures: false);
     }
 
     protected override void Dispose(bool disposing)
@@ -51,6 +60,8 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
             _scanTimer.Dispose();
             _crosshairOverlay.Dispose();
             _annotationManager.Dispose();
+            _hotkeyManager.Dispose();
+            _annotationToolForm?.Dispose();
             foreach (var overlay in _overlays.Values)
             {
                 overlay.Dispose();
@@ -108,6 +119,7 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
 
         var windows = WindowController.GetMovableWindows();
         var liveHandles = windows.Select(window => window.Handle).ToHashSet();
+        var displayHandles = SelectOverlayDisplayHandles(windows);
 
         foreach (var window in windows)
         {
@@ -119,6 +131,7 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
                     ToggleMoveAllWindows,
                     () => _crosshairEnabled,
                     ToggleCrosshair,
+                    bounds => ShowAnnotationTools(window.Handle, bounds),
                     _layoutStore.GetNames,
                     SaveLayout,
                     LoadLayout,
@@ -152,6 +165,9 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
                     () => _annotationManager.ToolbarColor,
                     () => _annotationManager.MatchTargetWindowColor,
                     () => _annotationManager.SharpIconRendering,
+                    _annotationManager.GetButtonPreference,
+                    _annotationManager.GetButtonName,
+                    _annotationManager.StartToolbarExpanded,
                     ExitThread);
             }
         }
@@ -167,8 +183,43 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
 
         foreach (var overlay in _overlays.Values)
         {
-            overlay.UpdatePosition(_buttonsVisible);
+            overlay.UpdatePosition(_buttonsVisible, displayHandles.Contains(overlay.TargetWindow));
         }
+    }
+
+    private static HashSet<IntPtr> SelectOverlayDisplayHandles(IReadOnlyList<WindowInfo> windows)
+    {
+        var zOrder = WindowController.GetWindowZOrder();
+        var candidates = windows
+            .Select(window =>
+            {
+                var hasRegion = WindowController.TryGetOverlayRegion(window.Handle, out var region);
+                var screen = hasRegion ? Screen.FromRectangle(region) : null;
+                return new
+                {
+                    Window = window,
+                    HasRegion = hasRegion,
+                    Region = region,
+                    Screen = screen?.DeviceName ?? string.Empty,
+                    Z = zOrder.TryGetValue(window.Handle, out var order) ? order : int.MaxValue
+                };
+            })
+            .Where(candidate => candidate.HasRegion)
+            .ToList();
+
+        var selected = new HashSet<IntPtr>();
+        foreach (var screenGroup in candidates.GroupBy(candidate => candidate.Screen))
+        {
+            var representative = screenGroup
+                .OrderBy(candidate => candidate.Z)
+                .FirstOrDefault();
+            if (representative is not null)
+            {
+                selected.Add(representative.Window.Handle);
+            }
+        }
+
+        return selected;
     }
 
     private void ToggleVisible()
@@ -180,6 +231,7 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
     private void BeginPresentation()
     {
         _presentationActive = true;
+        _annotationToolForm?.Hide();
         foreach (var overlay in _overlays.Values)
         {
             overlay.Hide();
@@ -198,17 +250,28 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
         SyncOverlays();
     }
 
+    private void BeginTargetSelection()
+    {
+        _annotationToolForm?.Hide();
+        foreach (var overlay in _overlays.Values)
+        {
+            overlay.Hide();
+        }
+    }
+
+    private void EndTargetSelection()
+    {
+        SyncOverlays();
+        _annotationToolForm?.Show();
+        _annotationToolForm?.BringToFront();
+    }
+
     private void ShowPresentationToolbar()
     {
-        if (!_overlays.TryGetValue(_presentationHostHandle, out var host))
-        {
-            return;
-        }
-
-        host.SyncToggleStates();
-        _annotationManager.AttachPresentationToolbar(host);
-        host.ShowForPresentation();
-        _annotationManager.PositionPresentationNotice(host.Bounds);
+        var tools = EnsureAnnotationToolForm();
+        _annotationManager.AttachPresentationToolbar(tools);
+        tools.ShowForPresentation(_annotationManager.SelectedTargetBounds);
+        _annotationManager.PositionPresentationNotice(tools.Bounds);
     }
 
     private void SetMoveAllWindows(bool enabled)
@@ -254,6 +317,67 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
         SyncOverlays();
     }
 
+    private void ApplyToolbarDefaults()
+    {
+        _layoutControlsExpanded = _annotationManager.ExpandLayoutSetOnOpen;
+        _annotationControlsExpanded = _annotationManager.ExpandAnnotationSetOnOpen;
+        _programControlsExpanded = _annotationManager.ExpandProgramSetOnOpen;
+        SyncOverlayToggleStates();
+        SyncOverlays();
+        RebuildHotkeys(showFailures: true);
+    }
+
+    private void RebuildHotkeys(bool showFailures)
+    {
+        var registrations = ButtonCatalog.All
+            .Select(definition =>
+            {
+                var preference = _annotationManager.GetButtonPreference(definition.Id);
+                return (
+                    Name: _annotationManager.GetButtonName(definition.Id),
+                    Shortcut: preference.Shortcut,
+                    Action: (Action)(() => ExecuteButtonCommand(definition.Id)));
+            })
+            .Where(registration => !string.IsNullOrWhiteSpace(registration.Shortcut))
+            .ToArray();
+        var failures = _hotkeyManager.Register(registrations);
+        if (showFailures && failures.Count > 0)
+        {
+            MessageBox.Show(
+                "다른 프로그램에서 사용 중이어서 등록하지 못한 단축키입니다.\r\n\r\n" +
+                string.Join("\r\n", failures),
+                "Smart_Window 단축키",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+    }
+
+    private void ExecuteButtonCommand(string id)
+    {
+        if (id.StartsWith("marker.", StringComparison.Ordinal))
+        {
+            EnsureAnnotationToolForm().TryExecuteButton(id);
+            return;
+        }
+
+        if (id == "main.settings")
+        {
+            _annotationManager.ShowSettings();
+            return;
+        }
+        if (id == "main.app_exit")
+        {
+            ExitThread();
+            return;
+        }
+
+        var foreground = WindowController.GetForegroundWindow();
+        var overlay = _overlays.TryGetValue(foreground, out var foregroundOverlay)
+            ? foregroundOverlay
+            : _overlays.Values.FirstOrDefault(candidate => candidate.Visible);
+        overlay?.TryExecuteButton(id);
+    }
+
     private void ToggleAnnotationTool(IntPtr hostHandle, AnnotationTool tool)
     {
         _presentationHostHandle = hostHandle;
@@ -265,6 +389,26 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
 
         _annotationManager.ToggleTool(tool);
         SyncOverlayToggleStates();
+    }
+
+    private void ShowAnnotationTools(IntPtr hostHandle, Rectangle anchorBounds)
+    {
+        _presentationHostHandle = hostHandle;
+        _annotationManager.SuggestTarget(Screen.FromRectangle(anchorBounds));
+        EnsureAnnotationToolForm().ShowBelow(anchorBounds);
+    }
+
+    private AnnotationToolForm EnsureAnnotationToolForm()
+    {
+        if (_annotationToolForm is null || _annotationToolForm.IsDisposed)
+        {
+            _annotationToolForm = new AnnotationToolForm(
+                _annotationManager,
+                tool => ToggleAnnotationTool(_presentationHostHandle, tool),
+                () => CaptureSelectedRegion(_presentationHostHandle));
+        }
+
+        return _annotationToolForm;
     }
 
     private void CaptureSelectedRegion()

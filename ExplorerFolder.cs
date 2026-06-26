@@ -5,7 +5,7 @@ namespace WindowForm_Move;
 
 public static class ExplorerFolder
 {
-    public static void OpenIfNotOpen(string directory)
+    public static bool OpenIfNotOpen(string directory)
     {
         var target = Normalize(directory);
         object? shell = null;
@@ -19,7 +19,7 @@ public static class ExplorerFolder
                 windows = shellType.InvokeMember("Windows", System.Reflection.BindingFlags.InvokeMethod, null, shell, null);
                 if (windows is not null && ContainsFolder(windows, target))
                 {
-                    return;
+                    return true;
                 }
             }
         }
@@ -36,10 +36,11 @@ public static class ExplorerFolder
         try
         {
             Process.Start(new ProcessStartInfo("explorer.exe", $"\"{directory}\"") { UseShellExecute = true });
+            return true;
         }
         catch
         {
-            // The capture remains saved even if Explorer cannot be opened.
+            return false;
         }
     }
 

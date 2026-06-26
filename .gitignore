@@ -1,6 +1,13 @@
 bin/
 obj/
+**/bin/
+**/obj/
 publish-single*/
+publish-smart-window-*/
+publish-staging/
+.tools/
+toolbar-verification.png
+stage5-verification.png
 *.user
 *.suo
 *.userosscache

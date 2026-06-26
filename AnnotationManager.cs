@@ -4,28 +4,61 @@ namespace WindowForm_Move;
 
 public sealed class AnnotationManager : IDisposable
 {
+    public const string CustomTargetId = "custom-region";
+
     private readonly AnnotationSettings _settings = AnnotationSettings.Load();
     private PresentationAnnotationForm? _session;
+    private string? _selectedTargetId;
+    private Rectangle _customTargetBounds;
+    private string? _operationStatus;
 
     public AnnotationManager()
     {
         _settings.NextMarkerNumber = 1;
+        StartupManager.SetEnabled(_settings.AutoStartWithWindows);
     }
 
     public AnnotationTool ActiveTool { get; private set; }
+    public bool IsPresentationActive => _session is not null && !_session.IsDisposed;
     public Color MarkerColor => _settings.MarkerColor;
     public Color PenColor => _settings.PenColor;
     public int NextMarkerNumber => _settings.NextMarkerNumber;
+    public int MarkerSize => _settings.MarkerSize;
+    public float PenWidth => _settings.PenWidth;
+    public string MemoFontName => _settings.MemoFontName;
+    public float MemoFontSize => _settings.MemoFontSize;
     public bool ShowAnnotationSet => _settings.ShowAnnotationSet;
     public bool ShowLayoutSet => _settings.ShowLayoutSet;
     public bool ShowProgramSet => _settings.ShowProgramSet;
+    public bool ExpandAnnotationSetOnOpen => _settings.ExpandAnnotationSetOnOpen;
+    public bool ExpandLayoutSetOnOpen => _settings.ExpandLayoutSetOnOpen;
+    public bool ExpandProgramSetOnOpen => _settings.ExpandProgramSetOnOpen;
+    public bool StartToolbarExpanded => _settings.StartToolbarExpanded;
     public Color ToolbarColor => _settings.ToolbarColor;
     public bool MatchTargetWindowColor => _settings.MatchTargetWindowColor;
     public bool SharpIconRendering => _settings.SharpIconRendering;
+    public ButtonPreference GetButtonPreference(string id) => _settings.GetButtonPreference(id);
+    public string GetButtonName(string id)
+    {
+        var preference = GetButtonPreference(id);
+        return string.IsNullOrWhiteSpace(preference.DisplayName)
+            ? ButtonCatalog.Get(id).DefaultName
+            : preference.DisplayName.Trim();
+    }
+    public string GetButtonLabel(string id, string compactDefault)
+    {
+        var preference = GetButtonPreference(id);
+        return string.IsNullOrWhiteSpace(preference.DisplayName)
+            ? compactDefault
+            : preference.DisplayName.Trim();
+    }
     public event Action? ToolbarStateChanged;
+    public event Action? ToolbarDefaultsChanged;
     public event Action? PresentationStarted;
     public event Action? PresentationReady;
     public event Action? PresentationEnded;
+    public event Action? TargetSelectionStarted;
+    public event Action? TargetSelectionEnded;
 
     public void PositionPresentationNotice(Rectangle toolbarBounds)
     {
@@ -35,6 +68,106 @@ public sealed class AnnotationManager : IDisposable
     public void AttachPresentationToolbar(Form toolbar)
     {
         _session?.AttachToolbar(toolbar);
+    }
+
+    public IReadOnlyList<AnnotationTarget> GetAnnotationTargets()
+    {
+        var screens = Screen.AllScreens
+            .OrderBy(GetMonitorNumber)
+            .ToArray();
+        var targets = screens
+            .Select((screen, index) => new AnnotationTarget(
+                screen.DeviceName,
+                $"모니터 {GetMonitorNumber(screen, index + 1)} - {GetMonitorPositionName(screen)} ({screen.Bounds.Width} x {screen.Bounds.Height})",
+                screen.Bounds))
+            .ToList();
+        var customName = _customTargetBounds.IsEmpty
+            ? "직접 영역 선택..."
+            : $"직접 영역 ({_customTargetBounds.Width} x {_customTargetBounds.Height})";
+        targets.Add(new AnnotationTarget(CustomTargetId, customName, _customTargetBounds, true));
+        return targets;
+    }
+
+    public string SelectedTargetId
+    {
+        get
+        {
+            EnsureSelectedTarget();
+            return _selectedTargetId!;
+        }
+    }
+
+    public string SelectedTargetDisplayName =>
+        GetAnnotationTargets().FirstOrDefault(target => target.Id == SelectedTargetId)?.DisplayName
+        ?? "대상 없음";
+
+    public Rectangle SelectedTargetBounds => ResolveSelectedTargetBounds();
+    public string? OperationStatus => _operationStatus;
+
+    public void SuggestTarget(Screen screen)
+    {
+        if (IsPresentationActive || Screen.AllScreens.All(candidate => candidate.DeviceName != screen.DeviceName))
+        {
+            return;
+        }
+
+        _selectedTargetId = screen.DeviceName;
+        ToolbarStateChanged?.Invoke();
+    }
+
+    public bool SelectTarget(string targetId)
+    {
+        if (IsPresentationActive)
+        {
+            return false;
+        }
+
+        var selected = false;
+        if (targetId != CustomTargetId)
+        {
+            var screen = Screen.AllScreens.FirstOrDefault(candidate => candidate.DeviceName == targetId);
+            if (screen is null)
+            {
+                return false;
+            }
+
+            _selectedTargetId = screen.DeviceName;
+            selected = true;
+        }
+        else
+        {
+            selected = SelectCustomTarget();
+        }
+
+        if (!selected)
+        {
+            return false;
+        }
+
+        StartPresentation(AnnotationTool.None);
+        return IsPresentationActive;
+    }
+
+    public void EndPresentation()
+    {
+        _session?.Close();
+    }
+
+    public void OpenCaptureFolder()
+    {
+        try
+        {
+            var directory = GetCaptureDirectory();
+            Directory.CreateDirectory(directory);
+            var opened = ExplorerFolder.OpenIfNotOpen(directory);
+            SetOperationStatus(opened
+                ? $"{DateTime.Now:HH:mm:ss} 캡처 폴더 열기"
+                : $"{DateTime.Now:HH:mm:ss} 캡처 폴더를 열지 못했습니다.");
+        }
+        catch (Exception exception)
+        {
+            SetOperationStatus($"{DateTime.Now:HH:mm:ss} 폴더 오류: {exception.Message}");
+        }
     }
 
     public void ToggleTool(AnnotationTool tool)
@@ -71,6 +204,25 @@ public sealed class AnnotationManager : IDisposable
         _settings.NextMarkerNumber = nextNumber;
         _session?.SyncSettings();
         ToolbarStateChanged?.Invoke();
+    }
+
+    public void SetMarkerSize(int size)
+    {
+        _settings.MarkerSize = Math.Clamp(size, 4, 60);
+        SaveDrawingSettings();
+    }
+
+    public void SetPenWidth(float width)
+    {
+        _settings.PenWidth = Math.Clamp(width, 1F, 20F);
+        SaveDrawingSettings();
+    }
+
+    public void SetMemoFont(string fontName, float fontSize)
+    {
+        _settings.MemoFontName = string.IsNullOrWhiteSpace(fontName) ? "Segoe UI Semibold" : fontName;
+        _settings.MemoFontSize = Math.Clamp(fontSize, 8F, 36F);
+        SaveDrawingSettings();
     }
 
     public void ChooseMarkerColor()
@@ -119,6 +271,13 @@ public sealed class AnnotationManager : IDisposable
         _session?.ClearAll();
     }
 
+    private void SaveDrawingSettings()
+    {
+        _settings.Save();
+        _session?.SyncSettings();
+        ToolbarStateChanged?.Invoke();
+    }
+
     public void CaptureSelectedRegion()
     {
         if (_session is not null && !_session.IsDisposed)
@@ -138,13 +297,27 @@ public sealed class AnnotationManager : IDisposable
             return;
         }
 
-        using var form = new AnnotationSettingsForm(_settings);
-        if (form.ShowDialog() == DialogResult.OK)
+        using var form = new AnnotationSettingsForm(_settings, ApplySettings);
+        form.ShowDialog();
+    }
+
+    private bool ApplySettings()
+    {
+        if (!StartupManager.SetEnabled(_settings.AutoStartWithWindows))
         {
-            form.ApplyTo(_settings);
-            _settings.Save();
-            ToolbarStateChanged?.Invoke();
+            MessageBox.Show(
+                "Windows 자동 실행 설정을 변경하지 못했습니다.",
+                "Smart_Window 설정",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            return false;
         }
+
+        _settings.Save();
+        _session?.SyncSettings();
+        ToolbarDefaultsChanged?.Invoke();
+        ToolbarStateChanged?.Invoke();
+        return true;
     }
 
     public void Dispose()
@@ -166,11 +339,12 @@ public sealed class AnnotationManager : IDisposable
         Bitmap? frozenScreen = null;
         try
         {
-            var bounds = SystemInformation.VirtualScreen;
+            var bounds = ResolveSelectedTargetBounds();
             frozenScreen = ScreenCapture.Capture(bounds);
             _session = new PresentationAnnotationForm(
                 frozenScreen,
                 bounds,
+                _selectedTargetId == CustomTargetId,
                 _settings,
                 CreateCapturePath);
             frozenScreen = null;
@@ -179,7 +353,12 @@ public sealed class AnnotationManager : IDisposable
                 ActiveTool = tool;
                 ToolbarStateChanged?.Invoke();
             };
-            _session.SettingsChanged += () => ToolbarStateChanged?.Invoke();
+            _session.SettingsChanged += () =>
+            {
+                ToolbarDefaultsChanged?.Invoke();
+                ToolbarStateChanged?.Invoke();
+            };
+            _session.StatusChanged += SetOperationStatus;
             _session.FormClosed += SessionClosed;
             ActiveTool = initialTool;
             _session.SetTool(initialTool);
@@ -212,6 +391,7 @@ public sealed class AnnotationManager : IDisposable
             using var selector = new CaptureSelectionForm(selectorImage, bounds);
             if (selector.ShowDialog() != DialogResult.OK)
             {
+                SetOperationStatus($"{DateTime.Now:HH:mm:ss} 캡처 취소");
                 return;
             }
 
@@ -219,23 +399,117 @@ public sealed class AnnotationManager : IDisposable
             var outputPath = CreateCapturePath();
             result.Save(outputPath, ImageFormat.Png);
             var copied = TryCopyToClipboard(result);
-            MessageBox.Show(
-                copied
-                    ? $"캡처를 저장하고 클립보드에 복사했습니다.\n\n{outputPath}"
-                    : $"캡처를 저장했습니다.\n\n{outputPath}",
-                "캡처 완료",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-            ExplorerFolder.OpenIfNotOpen(Path.GetDirectoryName(outputPath)!);
+            SetOperationStatus(copied
+                ? $"{DateTime.Now:HH:mm:ss} 저장·클립보드 복사 완료: {Path.GetFileName(outputPath)}"
+                : $"{DateTime.Now:HH:mm:ss} 저장 완료 / 클립보드 복사 실패: {Path.GetFileName(outputPath)}");
         }
         catch (Exception exception)
         {
-            MessageBox.Show(exception.Message, "캡처 오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            SetOperationStatus($"{DateTime.Now:HH:mm:ss} 캡처 오류: {exception.Message}");
         }
         finally
         {
             PresentationEnded?.Invoke();
         }
+    }
+
+    private bool SelectCustomTarget()
+    {
+        TargetSelectionStarted?.Invoke();
+        HideHostOverlays();
+        Application.DoEvents();
+        var virtualBounds = SystemInformation.VirtualScreen;
+        try
+        {
+            using var frozen = ScreenCapture.Capture(virtualBounds);
+            using var selectorImage = (Bitmap)frozen.Clone();
+            using var selector = new CaptureSelectionForm(selectorImage, virtualBounds);
+            if (selector.ShowDialog() != DialogResult.OK)
+            {
+                return false;
+            }
+
+            var selected = selector.SelectedScreenRegion;
+            if (selected.Width < 5 || selected.Height < 5)
+            {
+                return false;
+            }
+
+            _customTargetBounds = selected;
+            _selectedTargetId = CustomTargetId;
+            ToolbarStateChanged?.Invoke();
+            return true;
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(exception.Message, "마킹 대상 선택 오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return false;
+        }
+        finally
+        {
+            TargetSelectionEnded?.Invoke();
+        }
+    }
+
+    private Rectangle ResolveSelectedTargetBounds()
+    {
+        EnsureSelectedTarget();
+        if (_selectedTargetId == CustomTargetId && !_customTargetBounds.IsEmpty)
+        {
+            return _customTargetBounds;
+        }
+
+        var screen = Screen.AllScreens.FirstOrDefault(candidate => candidate.DeviceName == _selectedTargetId)
+                     ?? Screen.PrimaryScreen
+                     ?? Screen.AllScreens.First();
+        _selectedTargetId = screen.DeviceName;
+        return screen.Bounds;
+    }
+
+    private void EnsureSelectedTarget()
+    {
+        if (_selectedTargetId == CustomTargetId && !_customTargetBounds.IsEmpty)
+        {
+            return;
+        }
+
+        if (_selectedTargetId is not null &&
+            Screen.AllScreens.Any(screen => screen.DeviceName == _selectedTargetId))
+        {
+            return;
+        }
+
+        _selectedTargetId = (Screen.PrimaryScreen ?? Screen.AllScreens.First()).DeviceName;
+    }
+
+    private static int GetMonitorNumber(Screen screen)
+    {
+        return GetMonitorNumber(screen, int.MaxValue);
+    }
+
+    private static int GetMonitorNumber(Screen screen, int fallback)
+    {
+        var digits = new string(screen.DeviceName.Where(char.IsDigit).ToArray());
+        return int.TryParse(digits, out var number) ? number : fallback;
+    }
+
+    private static string GetMonitorPositionName(Screen screen)
+    {
+        var primary = Screen.PrimaryScreen ?? Screen.AllScreens.First();
+        if (screen.DeviceName == primary.DeviceName)
+        {
+            return "주 모니터";
+        }
+
+        var primaryCenter = new Point(
+            primary.Bounds.Left + primary.Bounds.Width / 2,
+            primary.Bounds.Top + primary.Bounds.Height / 2);
+        var center = new Point(
+            screen.Bounds.Left + screen.Bounds.Width / 2,
+            screen.Bounds.Top + screen.Bounds.Height / 2);
+        var horizontal = center.X < primaryCenter.X ? "왼쪽" : center.X > primaryCenter.X ? "오른쪽" : string.Empty;
+        var vertical = center.Y < primaryCenter.Y ? "위" : center.Y > primaryCenter.Y ? "아래" : string.Empty;
+        return string.IsNullOrEmpty(horizontal + vertical) ? "보조 모니터" : horizontal + vertical;
     }
 
     private void SessionClosed(object? sender, FormClosedEventArgs e)
@@ -262,9 +536,7 @@ public sealed class AnnotationManager : IDisposable
 
     private string CreateCapturePath()
     {
-        var directory = string.IsNullOrWhiteSpace(_settings.CaptureDirectory)
-            ? Environment.GetFolderPath(Environment.SpecialFolder.MyPictures)
-            : Environment.ExpandEnvironmentVariables(_settings.CaptureDirectory.Trim());
+        var directory = GetCaptureDirectory();
         Directory.CreateDirectory(directory);
 
         var now = DateTime.Now;
@@ -301,12 +573,25 @@ public sealed class AnnotationManager : IDisposable
         return path;
     }
 
+    private string GetCaptureDirectory()
+    {
+        return string.IsNullOrWhiteSpace(_settings.CaptureDirectory)
+            ? Environment.GetFolderPath(Environment.SpecialFolder.MyPictures)
+            : Environment.ExpandEnvironmentVariables(_settings.CaptureDirectory.Trim());
+    }
+
+    private void SetOperationStatus(string status)
+    {
+        _operationStatus = status;
+        ToolbarStateChanged?.Invoke();
+    }
+
     private static bool TryCopyToClipboard(Bitmap image)
     {
         try
         {
             using var clipboardImage = (Bitmap)image.Clone();
-            Clipboard.SetImage(clipboardImage);
+            Clipboard.SetDataObject(clipboardImage, true);
             return true;
         }
         catch

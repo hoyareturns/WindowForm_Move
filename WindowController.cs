@@ -44,9 +44,12 @@ public static class WindowController
     private const int WM_SYSCOMMAND = 0x0112;
     private const int SC_CLOSE = 0xF060;
     private const uint OBJID_NATIVEOM = 0xFFFFFFF0;
+    private const int GW_HWNDPREV = 3;
     private const int GW_OWNER = 4;
     private const int GWL_EXSTYLE = -20;
     private const int DWMWA_CLOAKED = 14;
+    private const uint SWP_NOACTIVATE = 0x0010;
+    private const uint SWP_SHOWWINDOW = 0x0040;
     private const long WS_EX_TOOLWINDOW = 0x00000080L;
     private const long WS_EX_APPWINDOW = 0x00040000L;
 
@@ -193,6 +196,57 @@ public static class WindowController
         }, IntPtr.Zero);
 
         return windows;
+    }
+
+    public static IReadOnlyDictionary<IntPtr, int> GetWindowZOrder()
+    {
+        var result = new Dictionary<IntPtr, int>();
+        var order = 0;
+        EnumWindows((handle, _) =>
+        {
+            result[handle] = order++;
+            return true;
+        }, IntPtr.Zero);
+        return result;
+    }
+
+    public static bool PlaceWindowDirectlyAbove(
+        IntPtr windowHandle,
+        IntPtr targetHandle,
+        Rectangle bounds)
+    {
+        if (windowHandle == IntPtr.Zero || targetHandle == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        var windowAboveTarget = GetWindow(targetHandle, GW_HWNDPREV);
+        if (windowAboveTarget == windowHandle)
+        {
+            return true;
+        }
+
+        return SetWindowPos(
+            windowHandle,
+            windowAboveTarget,
+            bounds.X,
+            bounds.Y,
+            bounds.Width,
+            bounds.Height,
+            SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    }
+
+    public static bool TryGetOverlayRegion(IntPtr handle, out Rectangle region)
+    {
+        region = Rectangle.Empty;
+        if (!IsOverlayLayout(handle) || !TryGetWindowRectangle(handle, out var windowRect))
+        {
+            return false;
+        }
+
+        var workingArea = Screen.FromHandle(handle).WorkingArea;
+        region = Rectangle.Intersect(windowRect, workingArea);
+        return region.Width > 0 && region.Height > 0;
     }
 
     private static IReadOnlyList<WindowInfo> GetLayoutRestoreWindows()
@@ -347,20 +401,7 @@ public static class WindowController
 
     public static bool IsOverlayLayout(IntPtr handle)
     {
-        if (IsMaximized(handle))
-        {
-            return true;
-        }
-
-        if (!TryGetWindowRectangle(handle, out var windowRect))
-        {
-            return false;
-        }
-
-        var workingArea = Screen.FromHandle(handle).WorkingArea;
-        return Enum.GetValues<WindowHalf>()
-            .Select(half => GetHalfRectangle(workingArea, half))
-            .Any(expected => RectanglesApproximatelyEqual(windowRect, expected));
+        return IsMaximized(handle);
     }
 
     public static bool TryGetWindowRectangle(IntPtr handle, out Rectangle rectangle)
@@ -839,6 +880,16 @@ public static class WindowController
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool MoveWindow(IntPtr hWnd, int x, int y, int width, int height, bool repaint);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd,
+        IntPtr hWndInsertAfter,
+        int x,
+        int y,
+        int width,
+        int height,
+        uint flags);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool PostMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);

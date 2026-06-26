@@ -16,6 +16,7 @@
     <EmbeddedResource Include="Assets\Icons\*.png">
       <LogicalName>WindowForm_Move.Assets.Icons.%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
+    <Compile Remove="tests\**\*.cs" />
   </ItemGroup>
 
 </Project>

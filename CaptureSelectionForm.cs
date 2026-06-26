@@ -1,8 +1,11 @@
+using System.Runtime.InteropServices;
+
 namespace WindowForm_Move;
 
 public sealed class CaptureSelectionForm : Form
 {
     private readonly Bitmap _screenImage;
+    private readonly Rectangle _virtualBounds;
     private Point _start;
     private Rectangle _selection;
     private bool _dragging;
@@ -10,7 +13,10 @@ public sealed class CaptureSelectionForm : Form
     public CaptureSelectionForm(Bitmap screenImage, Rectangle virtualBounds)
     {
         _screenImage = screenImage;
+        _virtualBounds = virtualBounds;
         FormBorderStyle = FormBorderStyle.None;
+        StartPosition = FormStartPosition.Manual;
+        AutoScaleMode = AutoScaleMode.None;
         ShowInTaskbar = false;
         TopMost = true;
         Bounds = virtualBounds;
@@ -19,11 +25,24 @@ public sealed class CaptureSelectionForm : Form
         KeyPreview = true;
     }
 
-    public Rectangle SelectedRegion => _selection;
+    public Rectangle SelectedRegion => MapClientToImage(_selection);
+    public Rectangle SelectedScreenRegion => new(
+        Left + _selection.Left,
+        Top + _selection.Top,
+        _selection.Width,
+        _selection.Height);
 
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
+        SetWindowPos(
+            Handle,
+            HwndTopMost,
+            _virtualBounds.Left,
+            _virtualBounds.Top,
+            _virtualBounds.Width,
+            _virtualBounds.Height,
+            SwpShowWindow);
         Activate();
         Focus();
     }
@@ -31,7 +50,9 @@ public sealed class CaptureSelectionForm : Form
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        e.Graphics.DrawImageUnscaled(_screenImage, Point.Empty);
+        e.Graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+        e.Graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+        e.Graphics.DrawImage(_screenImage, ClientRectangle);
         using var shade = new SolidBrush(Color.FromArgb(105, Color.Black));
         e.Graphics.FillRectangle(shade, ClientRectangle);
 
@@ -40,11 +61,16 @@ public sealed class CaptureSelectionForm : Form
             return;
         }
 
-        e.Graphics.DrawImage(_screenImage, _selection, _selection, GraphicsUnit.Pixel);
+        var imageSelection = MapClientToImage(_selection);
+        e.Graphics.DrawImage(
+            _screenImage,
+            _selection,
+            imageSelection,
+            GraphicsUnit.Pixel);
         using var border = new Pen(Color.FromArgb(90, 205, 255), 2F);
         e.Graphics.DrawRectangle(border, Rectangle.Inflate(_selection, -1, -1));
 
-        var label = $"{_selection.Width} x {_selection.Height}";
+        var label = $"{imageSelection.Width} x {imageSelection.Height}";
         using var font = new Font("Segoe UI", 9F, FontStyle.Bold);
         var labelSize = e.Graphics.MeasureString(label, font);
         var labelRect = new RectangleF(
@@ -129,4 +155,38 @@ public sealed class CaptureSelectionForm : Form
             Math.Max(first.X, second.X),
             Math.Max(first.Y, second.Y));
     }
+
+    private Rectangle MapClientToImage(Rectangle clientRegion)
+    {
+        if (clientRegion.Width <= 0 ||
+            clientRegion.Height <= 0 ||
+            ClientSize.Width <= 0 ||
+            ClientSize.Height <= 0)
+        {
+            return Rectangle.Empty;
+        }
+
+        var scaleX = _screenImage.Width / (double)ClientSize.Width;
+        var scaleY = _screenImage.Height / (double)ClientSize.Height;
+        var left = (int)Math.Floor(clientRegion.Left * scaleX);
+        var top = (int)Math.Floor(clientRegion.Top * scaleY);
+        var right = (int)Math.Ceiling(clientRegion.Right * scaleX);
+        var bottom = (int)Math.Ceiling(clientRegion.Bottom * scaleY);
+        var imageRegion = Rectangle.FromLTRB(left, top, right, bottom);
+        imageRegion.Intersect(new Rectangle(Point.Empty, _screenImage.Size));
+        return imageRegion;
+    }
+
+    private static readonly IntPtr HwndTopMost = new(-1);
+    private const uint SwpShowWindow = 0x0040;
+
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(
+        IntPtr windowHandle,
+        IntPtr insertAfter,
+        int x,
+        int y,
+        int width,
+        int height,
+        uint flags);
 }

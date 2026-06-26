@@ -28,6 +28,7 @@ public sealed class ArrowMemoForm : Form
         Controls.Add(label);
 
         _memoInput.Multiline = true;
+        _memoInput.AcceptsReturn = true;
         _memoInput.ScrollBars = ScrollBars.Vertical;
         _memoInput.Text = currentText;
         _memoInput.Location = new Point(14, 38);
@@ -40,7 +41,6 @@ public sealed class ArrowMemoForm : Form
         ok.Location = new Point(270, 140);
         Controls.Add(cancel);
         Controls.Add(ok);
-        AcceptButton = ok;
         CancelButton = cancel;
     }
 

@@ -8,6 +8,7 @@ static class Program
     [STAThread]
     static void Main()
     {
+        SingleInstanceCoordinator.StopExistingInstances();
         ApplicationConfiguration.Initialize();
         Application.Run(new WindowMoveApplicationContext());
     }    
