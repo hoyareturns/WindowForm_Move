@@ -163,6 +163,7 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
                     () => _annotationManager.ShowLayoutSet,
                     () => _annotationManager.ShowProgramSet,
                     () => _annotationManager.ToolbarColor,
+                    () => _annotationManager.ProgramComboWidth,
                     () => _annotationManager.MatchTargetWindowColor,
                     () => _annotationManager.SharpIconRendering,
                     _annotationManager.GetButtonPreference,
@@ -329,7 +330,7 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
 
     private void RebuildHotkeys(bool showFailures)
     {
-        var registrations = ButtonCatalog.All
+        var buttonRegistrations = ButtonCatalog.All
             .Select(definition =>
             {
                 var preference = _annotationManager.GetButtonPreference(definition.Id);
@@ -339,6 +340,9 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
                     Action: (Action)(() => ExecuteButtonCommand(definition.Id)));
             })
             .Where(registration => !string.IsNullOrWhiteSpace(registration.Shortcut))
+            .ToArray();
+        var registrations = buttonRegistrations
+            .Concat(_programStore.GetHotkeyRegistrations())
             .ToArray();
         var failures = _hotkeyManager.Register(registrations);
         if (showFailures && failures.Count > 0)
@@ -493,6 +497,7 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
         if (savedName is not null)
         {
             RefreshProgramControls(savedName);
+            RebuildHotkeys(showFailures: true);
         }
 
         return savedName;
@@ -515,6 +520,7 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
         if (succeeded)
         {
             RefreshProgramControls(string.Empty);
+            RebuildHotkeys(showFailures: true);
         }
 
         return succeeded;
@@ -527,6 +533,7 @@ public sealed class WindowMoveApplicationContext : ApplicationContext
         if (editedName is not null)
         {
             RefreshProgramControls(editedName);
+            RebuildHotkeys(showFailures: true);
         }
 
         return editedName;

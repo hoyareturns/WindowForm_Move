@@ -7,6 +7,7 @@ public sealed class ProgramLaunchEditForm : Form
     private readonly TextBox _launcherPathInput = new();
     private readonly TextBox _argumentsInput = new();
     private readonly TextBox _workingDirectoryInput = new();
+    private readonly TextBox _shortcutInput = new();
     private bool _saveAsCopy;
 
     public ProgramLaunchEditForm(ProgramLaunchEntry entry)
@@ -18,7 +19,7 @@ public sealed class ProgramLaunchEditForm : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
         TopMost = true;
-        ClientSize = new Size(680, 286);
+        ClientSize = new Size(680, 322);
         Font = new Font("Segoe UI", 9F);
 
         _nameInput.Text = entry.Name;
@@ -26,13 +27,15 @@ public sealed class ProgramLaunchEditForm : Form
         _launcherPathInput.Text = entry.LauncherPath ?? string.Empty;
         _argumentsInput.Text = entry.Arguments;
         _workingDirectoryInput.Text = entry.WorkingDirectory;
+        _shortcutInput.Text = entry.Shortcut ?? string.Empty;
+        _shortcutInput.KeyDown += ShortcutInputKeyDown;
 
         var table = new TableLayoutPanel
         {
             Location = new Point(12, 12),
-            Size = new Size(656, 188),
+            Size = new Size(656, 224),
             ColumnCount = 4,
-            RowCount = 5
+            RowCount = 6
         };
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96));
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -43,6 +46,7 @@ public sealed class ProgramLaunchEditForm : Form
         AddRow(table, 2, "실행 도구", _launcherPathInput, CreateLauncherButton(), null);
         AddRow(table, 3, "실행 인수", _argumentsInput, null, null);
         AddRow(table, 4, "작업 폴더", _workingDirectoryInput, CreateWorkingFolderButton(), null);
+        AddRow(table, 5, "단축키", _shortcutInput, null, null);
         Controls.Add(table);
 
         var help = new Label
@@ -51,16 +55,16 @@ public sealed class ProgramLaunchEditForm : Form
             ForeColor = Color.DimGray,
             AutoSize = false,
             Size = new Size(560, 42),
-            Location = new Point(108, 205)
+            Location = new Point(108, 241)
         };
         Controls.Add(help);
 
         var copy = new Button { Text = "복사", Size = new Size(76, 28) };
         var cancel = new Button { Text = "취소", DialogResult = DialogResult.Cancel, Size = new Size(76, 28) };
         var ok = new Button { Text = "확인", Size = new Size(76, 28) };
-        copy.Location = new Point(428, 250);
-        cancel.Location = new Point(510, 250);
-        ok.Location = new Point(592, 250);
+        copy.Location = new Point(428, 286);
+        cancel.Location = new Point(510, 286);
+        ok.Location = new Point(592, 286);
         copy.Click += (_, _) => BeginCopy();
         ok.Click += (_, _) => Confirm();
         Controls.Add(copy);
@@ -86,7 +90,8 @@ public sealed class ProgramLaunchEditForm : Form
             targetPath,
             workingDirectory,
             _argumentsInput.Text.Trim(),
-            CleanPath(_launcherPathInput.Text));
+            CleanPath(_launcherPathInput.Text),
+            _shortcutInput.Text.Trim());
     }
 
     public bool SaveAsCopy => _saveAsCopy;
@@ -134,8 +139,34 @@ public sealed class ProgramLaunchEditForm : Form
             return;
         }
 
+        if (!HotkeyParser.TryNormalize(_shortcutInput.Text, out var normalizedShortcut, out var shortcutError))
+        {
+            ShowPathError(shortcutError, _shortcutInput);
+            return;
+        }
+        _shortcutInput.Text = normalizedShortcut;
+
         DialogResult = DialogResult.OK;
         Close();
+    }
+
+    private void ShortcutInputKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (HotkeyCapture.IsClearKey(e.KeyData))
+        {
+            _shortcutInput.Clear();
+            e.SuppressKeyPress = true;
+            return;
+        }
+
+        if (!HotkeyCapture.TryFormat(e.KeyData, out var shortcut))
+        {
+            return;
+        }
+
+        _shortcutInput.Text = shortcut;
+        _shortcutInput.SelectionStart = _shortcutInput.TextLength;
+        e.SuppressKeyPress = true;
     }
 
     private Button CreateTargetFileButton()

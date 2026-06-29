@@ -43,6 +43,7 @@ public sealed class OverlayForm : Form
     private readonly Func<bool> _getShowLayoutSet;
     private readonly Func<bool> _getShowProgramSet;
     private readonly Func<Color> _getToolbarColor;
+    private readonly Func<int> _getProgramComboWidth;
     private readonly Func<bool> _getMatchTargetWindowColor;
     private readonly Func<bool> _getSharpIconRendering;
     private readonly Func<string, ButtonPreference> _getButtonPreference;
@@ -120,6 +121,7 @@ public sealed class OverlayForm : Form
         Func<bool> getShowLayoutSet,
         Func<bool> getShowProgramSet,
         Func<Color> getToolbarColor,
+        Func<int> getProgramComboWidth,
         Func<bool> getMatchTargetWindowColor,
         Func<bool> getSharpIconRendering,
         Func<string, ButtonPreference> getButtonPreference,
@@ -164,6 +166,7 @@ public sealed class OverlayForm : Form
         _getShowLayoutSet = getShowLayoutSet;
         _getShowProgramSet = getShowProgramSet;
         _getToolbarColor = getToolbarColor;
+        _getProgramComboWidth = getProgramComboWidth;
         _getMatchTargetWindowColor = getMatchTargetWindowColor;
         _getSharpIconRendering = getSharpIconRendering;
         _getButtonPreference = getButtonPreference;
@@ -281,6 +284,7 @@ public sealed class OverlayForm : Form
     public void SyncToggleStates()
     {
         ApplyToolbarTheme();
+        ApplyProgramComboWidth();
 
         if (_allButton is not null)
         {
@@ -303,6 +307,22 @@ public sealed class OverlayForm : Form
         SyncProgramControlsVisibility();
         ApplyToolbarMinimizedState();
         ApplyButtonConfiguration();
+    }
+
+    private void ApplyProgramComboWidth()
+    {
+        var width = GetProgramComboWidth();
+        if (_programCombo.Width != width)
+        {
+            _programCombo.Width = width;
+            _programCombo.DropDownWidth = Math.Max(320, width);
+            UpdateToolbarWidth();
+        }
+    }
+
+    private int GetProgramComboWidth()
+    {
+        return Math.Clamp(_getProgramComboWidth(), 70, 320);
     }
 
     public bool TryExecuteButton(string id)
@@ -406,13 +426,16 @@ public sealed class OverlayForm : Form
         ConfigureButton(_programLeftToggleButton, "main.program_toggle", _toggleProgramControls);
         panel.Controls.Add(_programLeftToggleButton);
 
-        _programCombo.Size = new Size(110, 23);
-        _programCombo.DropDownWidth = 320;
+        _programCombo.Size = new Size(GetProgramComboWidth(), 23);
+        _programCombo.DropDownWidth = Math.Max(320, _programCombo.Width);
         _programCombo.MaxDropDownItems = 20;
         _programCombo.Margin = new Padding(1);
         _programCombo.DropDownStyle = ComboBoxStyle.DropDown;
         _programCombo.FlatStyle = FlatStyle.Flat;
         _programCombo.Font = new Font("Segoe UI", 8.5F);
+        _programCombo.DrawMode = DrawMode.OwnerDrawFixed;
+        _programCombo.DrawItem += ProgramComboDrawItem;
+        _programCombo.KeyDown += ProgramComboKeyDown;
         AddProgramControl(panel, _programCombo);
         _toolTip.SetToolTip(_programCombo, "실행 항목 이름 입력 또는 저장 목록 선택");
 
@@ -719,6 +742,36 @@ public sealed class OverlayForm : Form
     private void LoadProgram()
     {
         _programCombo.BackColor = _loadProgram(_programCombo.Text) ? Color.White : Color.MistyRose;
+    }
+
+    private void ProgramComboKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode != Keys.Enter)
+        {
+            return;
+        }
+
+        LoadProgram();
+        e.SuppressKeyPress = true;
+    }
+
+    private void ProgramComboDrawItem(object? sender, DrawItemEventArgs e)
+    {
+        e.DrawBackground();
+        if (e.Index < 0)
+        {
+            return;
+        }
+
+        var text = Convert.ToString(_programCombo.Items[e.Index]) ?? string.Empty;
+        TextRenderer.DrawText(
+            e.Graphics,
+            text,
+            _programCombo.Font,
+            new Rectangle(e.Bounds.Left + 3, e.Bounds.Top, e.Bounds.Width - 6, e.Bounds.Height),
+            _programCombo.ForeColor,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+        e.DrawFocusRectangle();
     }
 
     private void DeleteProgram()

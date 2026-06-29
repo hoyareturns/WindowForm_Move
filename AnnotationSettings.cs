@@ -25,6 +25,7 @@ public sealed class AnnotationSettings
     public bool MatchTargetWindowColor { get; set; }
     public bool SharpIconRendering { get; set; }
     public bool AutoStartWithWindows { get; set; }
+    public int ProgramComboWidth { get; set; } = 110;
     public Dictionary<string, ButtonPreference> ButtonPreferences { get; set; } = new();
 
     [JsonIgnore]
@@ -56,6 +57,7 @@ public sealed class AnnotationSettings
             settings.CaptureFileNamePattern = string.IsNullOrWhiteSpace(settings.CaptureFileNamePattern)
                 ? "{date}_{time}"
                 : settings.CaptureFileNamePattern;
+            settings.ProgramComboWidth = Math.Clamp(settings.ProgramComboWidth, 70, 320);
             settings.EnsureButtonPreferences();
             return settings;
         }
@@ -105,6 +107,7 @@ public sealed class AnnotationSettings
             preference.DisplayName ??= string.Empty;
             preference.Shortcut ??= string.Empty;
         }
+        ProgramComboWidth = Math.Clamp(ProgramComboWidth, 70, 320);
     }
 
     private static string GetSettingsPath()

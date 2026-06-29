@@ -114,13 +114,31 @@ Assert(
     HotkeyCapture.IsClearKey(Keys.Delete) && HotkeyCapture.IsClearKey(Keys.Back),
     "단축키 삭제 키를 인식하지 못했습니다.");
 
+using var programEditForm = new ProgramLaunchEditForm(new ProgramLaunchEntry(
+    "E3D_폴더",
+    Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+    Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+    string.Empty,
+    string.Empty,
+    "Ctrl+Alt+E"));
+programEditForm.CreateControl();
+var programEditTextBoxes = Descendants(programEditForm).OfType<TextBox>().ToArray();
+Assert(
+    programEditTextBoxes.Any(input => input.Text == "Ctrl+Alt+E"),
+    "프로그램 실행 항목 편집창에 단축키 입력칸이 없습니다.");
+Assert(
+    programEditForm.CreateEntry().Shortcut == "Ctrl+Alt+E",
+    "프로그램 실행 항목 단축키가 저장 모델에 반영되지 않았습니다.");
+
 var startupSettings = new AnnotationSettings
 {
     ExpandAnnotationSetOnOpen = true,
     ExpandLayoutSetOnOpen = true,
-    ExpandProgramSetOnOpen = true
+    ExpandProgramSetOnOpen = true,
+    ProgramComboWidth = 180
 };
 Assert(!startupSettings.StartToolbarExpanded, "전체 툴바 시작 상태가 세트별 펼침 상태와 분리되지 않았습니다.");
+Assert(startupSettings.ProgramComboWidth == 180, "프로그램 실행 목록 폭 설정이 저장되지 않았습니다.");
 
 using var annotationManager = new AnnotationManager();
 using var annotationTool = new AnnotationToolForm(annotationManager, _ => { }, () => { });

@@ -20,6 +20,7 @@ public sealed class AnnotationSettingsForm : Form
     private readonly CheckBox _matchTargetColorInput;
     private readonly CheckBox _sharpIconInput;
     private readonly CheckBox _autoStartInput;
+    private readonly NumericUpDown _programComboWidthInput;
     private readonly DataGridView _buttonGrid;
 
     public AnnotationSettingsForm(
@@ -66,6 +67,7 @@ public sealed class AnnotationSettingsForm : Form
         _autoStartInput = CreateCheckBox(
             "Windows 시작 시 Smart_Window 자동 실행",
             settings.AutoStartWithWindows);
+        _programComboWidthInput = CreateNumberInput(settings.ProgramComboWidth, 70, 320, 10);
 
         var root = new TableLayoutPanel
         {
@@ -127,6 +129,7 @@ public sealed class AnnotationSettingsForm : Form
         settings.MatchTargetWindowColor = _matchTargetColorInput.Checked;
         settings.SharpIconRendering = _sharpIconInput.Checked;
         settings.AutoStartWithWindows = _autoStartInput.Checked;
+        settings.ProgramComboWidth = (int)_programComboWidthInput.Value;
         ApplyButtonGrid(settings);
     }
 
@@ -143,7 +146,7 @@ public sealed class AnnotationSettingsForm : Form
         content.RowStyles.Add(new RowStyle(SizeType.Absolute, 100F));
         content.RowStyles.Add(new RowStyle(SizeType.Absolute, 92F));
         content.RowStyles.Add(new RowStyle(SizeType.Absolute, 158F));
-        content.RowStyles.Add(new RowStyle(SizeType.Absolute, 62F));
+        content.RowStyles.Add(new RowStyle(SizeType.Absolute, 94F));
         page.Controls.Add(content);
 
         var captureGroup = new GroupBox { Text = "캡처", Dock = DockStyle.Fill };
@@ -209,8 +212,28 @@ public sealed class AnnotationSettingsForm : Form
         content.Controls.Add(setGroup, 0, 2);
 
         var startupGroup = new GroupBox { Text = "Windows 시작", Dock = DockStyle.Fill };
-        _autoStartInput.Location = new Point(14, 24);
-        startupGroup.Controls.Add(_autoStartInput);
+        var startupTable = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 2,
+            Padding = new Padding(10, 8, 10, 8)
+        };
+        startupTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190F));
+        startupTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        startupTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+        startupTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+        startupTable.Controls.Add(_autoStartInput, 0, 0);
+        startupTable.SetColumnSpan(_autoStartInput, 2);
+        startupTable.Controls.Add(new Label
+        {
+            Text = "프로그램 실행 목록 폭",
+            AutoSize = true,
+            Anchor = AnchorStyles.Left
+        }, 0, 1);
+        _programComboWidthInput.Anchor = AnchorStyles.Left;
+        startupTable.Controls.Add(_programComboWidthInput, 1, 1);
+        startupGroup.Controls.Add(startupTable);
         content.Controls.Add(startupGroup, 0, 3);
     }
 

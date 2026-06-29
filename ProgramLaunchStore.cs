@@ -8,7 +8,8 @@ public sealed record ProgramLaunchEntry(
     string FilePath,
     string WorkingDirectory,
     string Arguments,
-    string LauncherPath = "");
+    string LauncherPath = "",
+    string Shortcut = "");
 
 public sealed class ProgramLaunchStore
 {
@@ -28,8 +29,19 @@ public sealed class ProgramLaunchStore
     public IReadOnlyList<string> GetNames()
     {
         return _entries
-            .Select(entry => entry.Name)
-            .OrderBy(name => name, StringComparer.CurrentCultureIgnoreCase)
+            .OrderBy(entry => entry.Name, StringComparer.CurrentCultureIgnoreCase)
+            .Select(GetDisplayName)
+            .ToList();
+    }
+
+    public IReadOnlyList<(string Name, string Shortcut, Action Action)> GetHotkeyRegistrations()
+    {
+        return _entries
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Shortcut))
+            .Select(entry => (
+                entry.Name,
+                entry.Shortcut,
+                (Action)(() => Load(entry.Name, out _))))
             .ToList();
     }
 
@@ -77,7 +89,7 @@ public sealed class ProgramLaunchStore
 
         var name = string.IsNullOrWhiteSpace(preferredName)
             ? GetDefaultName(selectedPath)
-            : preferredName.Trim();
+            : ExtractEntryName(preferredName);
         name = MakeUniqueName(name, selectedPath);
         var entry = new ProgramLaunchEntry(
             name,
@@ -85,10 +97,37 @@ public sealed class ProgramLaunchStore
             Directory.Exists(selectedPath) ? selectedPath : Path.GetDirectoryName(selectedPath) ?? string.Empty,
             string.Empty,
             string.Empty);
+        using (var form = new ProgramLaunchEditForm(entry))
+        {
+            if (form.ShowDialog(owner) != DialogResult.OK)
+            {
+                return null;
+            }
+
+            entry = form.CreateEntry();
+        }
+        if (!HotkeyParser.TryNormalize(entry.Shortcut, out var normalizedShortcut, out var shortcutError))
+        {
+            MessageBox.Show(owner, shortcutError, "단축키 확인", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return null;
+        }
+
+        entry = entry with { Shortcut = normalizedShortcut };
+        if (_entries.Any(item => string.Equals(item.Name, entry.Name, StringComparison.CurrentCultureIgnoreCase)))
+        {
+            MessageBox.Show(owner, "같은 표시 이름이 이미 등록되어 있습니다.", "이름 중복", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return null;
+        }
+
+        if (!ValidateShortcut(entry, owner))
+        {
+            return null;
+        }
+
         _entries.RemoveAll(item => string.Equals(item.Name, name, StringComparison.CurrentCultureIgnoreCase));
         _entries.Add(entry);
         WriteEntries();
-        return name;
+        return GetDisplayName(entry);
     }
 
     public bool Load(string name, out string? error)
@@ -150,7 +189,7 @@ public sealed class ProgramLaunchStore
     public string? Edit(string name, IWin32Window? owner)
     {
         var index = _entries.FindIndex(entry =>
-            string.Equals(entry.Name, name.Trim(), StringComparison.CurrentCultureIgnoreCase));
+            string.Equals(entry.Name, ExtractEntryName(name), StringComparison.CurrentCultureIgnoreCase));
         if (index < 0)
         {
             return null;
@@ -163,12 +202,22 @@ public sealed class ProgramLaunchStore
         }
 
         var edited = form.CreateEntry();
+        if (!HotkeyParser.TryNormalize(edited.Shortcut, out var normalizedShortcut, out var shortcutError))
+        {
+            MessageBox.Show(owner, shortcutError, "단축키 확인", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return null;
+        }
+        edited = edited with { Shortcut = normalizedShortcut };
         if (form.SaveAsCopy)
         {
             edited = edited with { Name = MakeUniqueCopyName(edited.Name) };
+            if (!ValidateShortcut(edited, owner))
+            {
+                return null;
+            }
             _entries.Add(edited);
             WriteEntries();
-            return edited.Name;
+            return GetDisplayName(edited);
         }
 
         if (_entries.Where((_, entryIndex) => entryIndex != index).Any(entry =>
@@ -178,15 +227,20 @@ public sealed class ProgramLaunchStore
             return null;
         }
 
+        if (!ValidateShortcut(edited, owner, index))
+        {
+            return null;
+        }
+
         _entries[index] = edited;
         WriteEntries();
-        return edited.Name;
+        return GetDisplayName(edited);
     }
 
     public bool Delete(string name)
     {
         var removed = _entries.RemoveAll(entry =>
-            string.Equals(entry.Name, name.Trim(), StringComparison.CurrentCultureIgnoreCase));
+            string.Equals(entry.Name, ExtractEntryName(name), StringComparison.CurrentCultureIgnoreCase));
         if (removed == 0)
         {
             return false;
@@ -199,7 +253,44 @@ public sealed class ProgramLaunchStore
     private ProgramLaunchEntry? Find(string name)
     {
         return _entries.FirstOrDefault(entry =>
-            string.Equals(entry.Name, name.Trim(), StringComparison.CurrentCultureIgnoreCase));
+            string.Equals(entry.Name, ExtractEntryName(name), StringComparison.CurrentCultureIgnoreCase));
+    }
+
+    private bool ValidateShortcut(ProgramLaunchEntry entry, IWin32Window? owner, int editingIndex = -1)
+    {
+        if (string.IsNullOrWhiteSpace(entry.Shortcut))
+        {
+            return true;
+        }
+
+        var duplicate = _entries.Where((_, index) => index != editingIndex)
+            .FirstOrDefault(item => string.Equals(item.Shortcut, entry.Shortcut, StringComparison.OrdinalIgnoreCase));
+        if (duplicate is null)
+        {
+            return true;
+        }
+
+        MessageBox.Show(
+            owner,
+            $"같은 단축키가 이미 등록되어 있습니다.\n\n{duplicate.Name}: {duplicate.Shortcut}",
+            "단축키 중복",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Warning);
+        return false;
+    }
+
+    private static string GetDisplayName(ProgramLaunchEntry entry)
+    {
+        return string.IsNullOrWhiteSpace(entry.Shortcut)
+            ? entry.Name
+            : $"{entry.Name} : {entry.Shortcut}";
+    }
+
+    private static string ExtractEntryName(string value)
+    {
+        var text = value.Trim();
+        var separatorIndex = text.LastIndexOf(" : ", StringComparison.Ordinal);
+        return separatorIndex > 0 ? text[..separatorIndex].Trim() : text;
     }
 
     private string MakeUniqueName(string requestedName, string filePath)

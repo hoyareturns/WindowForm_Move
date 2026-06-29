@@ -35,6 +35,7 @@ public sealed class AnnotationManager : IDisposable
     public bool ExpandProgramSetOnOpen => _settings.ExpandProgramSetOnOpen;
     public bool StartToolbarExpanded => _settings.StartToolbarExpanded;
     public Color ToolbarColor => _settings.ToolbarColor;
+    public int ProgramComboWidth => _settings.ProgramComboWidth;
     public bool MatchTargetWindowColor => _settings.MatchTargetWindowColor;
     public bool SharpIconRendering => _settings.SharpIconRendering;
     public ButtonPreference GetButtonPreference(string id) => _settings.GetButtonPreference(id);
@@ -234,7 +235,7 @@ public sealed class AnnotationManager : IDisposable
         }
 
         using var dialog = new ColorDialog { Color = _settings.MarkerColor, FullOpen = true };
-        var owner = Application.OpenForms.OfType<OverlayForm>().FirstOrDefault(form => form.Visible);
+        var owner = GetColorDialogOwner();
         if (dialog.ShowDialog(owner) == DialogResult.OK)
         {
             _settings.MarkerColorArgb = dialog.Color.ToArgb();
@@ -252,13 +253,27 @@ public sealed class AnnotationManager : IDisposable
         }
 
         using var dialog = new ColorDialog { Color = _settings.PenColor, FullOpen = true };
-        var owner = Application.OpenForms.OfType<OverlayForm>().FirstOrDefault(form => form.Visible);
+        var owner = GetColorDialogOwner();
         if (dialog.ShowDialog(owner) == DialogResult.OK)
         {
             _settings.PenColorArgb = dialog.Color.ToArgb();
             _settings.Save();
             ToolbarStateChanged?.Invoke();
         }
+    }
+
+    private static IWin32Window? GetColorDialogOwner()
+    {
+        var owner = Application.OpenForms
+            .OfType<AnnotationToolForm>()
+            .FirstOrDefault(form => form.Visible && !form.IsDisposed)
+            ?? Application.OpenForms
+                .OfType<OverlayForm>()
+                .FirstOrDefault(form => form.Visible && !form.IsDisposed)
+            ?? Form.ActiveForm;
+
+        owner?.BringToFront();
+        return owner;
     }
 
     public void UndoLast()
