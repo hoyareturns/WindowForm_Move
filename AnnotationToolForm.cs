@@ -59,7 +59,7 @@ public sealed class AnnotationToolForm : Form
         StartPosition = FormStartPosition.Manual;
         ShowInTaskbar = false;
         TopMost = true;
-        ClientSize = new Size(1000, 628);
+        ClientSize = new Size(880, 628);
         Font = new Font("Segoe UI", 9F);
 
         _root = new TableLayoutPanel
@@ -103,6 +103,7 @@ public sealed class AnnotationToolForm : Form
             Margin = new Padding(8),
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
+            Font = _statusLabel.Font,
             TabStop = false
         };
         _collapseButton.FlatAppearance.BorderSize = 1;
@@ -377,6 +378,7 @@ public sealed class AnnotationToolForm : Form
         var rightGuide = ToChildX(panel, AbsoluteRight(_markerSizeInput));
         var contentLeft = panel.Padding.Left;
         var y = Math.Max(panel.Padding.Top, (panel.ClientSize.Height - _targetInput.Height) / 2);
+        var targetWidth = Math.Min(360, Math.Max(260, (rightGuide - contentLeft - _collapseButton.Width - gap * 3) / 2));
 
         _collapseButton.SetBounds(
             rightGuide - _collapseButton.Width,
@@ -384,9 +386,10 @@ public sealed class AnnotationToolForm : Form
             _collapseButton.Width,
             _targetInput.Height);
 
-        var statusWidth = Math.Min(320, Math.Max(180, _collapseButton.Left - gap - contentLeft - 220));
+        var statusLeft = contentLeft + targetWidth + gap;
+        var statusWidth = Math.Max(180, _collapseButton.Left - gap - statusLeft);
         _statusLabel.SetBounds(
-            _collapseButton.Left - gap - statusWidth,
+            statusLeft,
             y,
             statusWidth,
             _targetInput.Height);
@@ -394,7 +397,7 @@ public sealed class AnnotationToolForm : Form
         _targetInput.SetBounds(
             contentLeft,
             y,
-            Math.Max(220, _statusLabel.Left - gap - contentLeft),
+            targetWidth,
             _targetInput.Height);
     }
 
@@ -420,16 +423,17 @@ public sealed class AnnotationToolForm : Form
         const int gap = 12;
         var rightGuide = ToChildX(panel, AbsoluteRight(_markerSizeInput));
         var top = panel.Padding.Top;
+        var buttonTop = top + _exitButton.Margin.Top;
         _exitButton.SetBounds(
             rightGuide - _exitButton.Width,
-            top,
+            buttonTop,
             _exitButton.Width,
             ToolButtonHeight);
         _editTools.SetBounds(
             panel.Padding.Left,
             top,
             Math.Max(0, _exitButton.Left - gap - panel.Padding.Left),
-            ToolButtonHeight);
+            ToolButtonHeight + _exitButton.Margin.Vertical);
     }
 
     private static int AbsoluteRight(Control control)
@@ -495,10 +499,11 @@ public sealed class AnnotationToolForm : Form
     {
         var table = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.Right,
+            Width = 186,
             ColumnCount = 2,
             RowCount = rows,
-            Padding = new Padding(14, 0, 0, 0),
+            Padding = Padding.Empty,
             CellBorderStyle = TableLayoutPanelCellBorderStyle.None
         };
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 76F));
@@ -520,7 +525,7 @@ public sealed class AnnotationToolForm : Form
             Font = new Font("Segoe UI", 9F)
         }, 0, row);
         control.Dock = DockStyle.None;
-        control.Anchor = AnchorStyles.Left;
+        control.Anchor = AnchorStyles.Right;
         control.Width = SettingControlWidth;
         control.Margin = new Padding(4);
         table.Controls.Add(control, 1, row);

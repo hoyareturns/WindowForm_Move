@@ -63,6 +63,16 @@ static int AbsoluteLeft(Control control)
     return left;
 }
 
+static int AbsoluteTop(Control control)
+{
+    var top = control.Top;
+    for (var parent = control.Parent; parent is not null; parent = parent.Parent)
+    {
+        top += parent.Top;
+    }
+    return top;
+}
+
 using var settingsForm = new AnnotationSettingsForm(new AnnotationSettings());
 settingsForm.CreateControl();
 var descendants = Descendants(settingsForm).ToArray();
@@ -161,6 +171,10 @@ Assert(
     collapseButton.FlatStyle == FlatStyle.Flat &&
     collapseButton.FlatAppearance.BorderSize == 1,
     "접기 버튼 테두리가 일반 아이콘 버튼처럼 얇지 않습니다.");
+Assert(
+    collapseButton.Font.Size == statusLabel.Font.Size &&
+    collapseButton.Font.Style == statusLabel.Font.Style,
+    "접기/펼치기 글꼴이 상태 문구와 같은 크기/굵기가 아닙니다.");
 var regularButtonWidth = annotationControls
     .OfType<Button>()
     .First(button => button.Text == "텍스트")
@@ -191,6 +205,17 @@ Assert(
     AbsoluteRight(targetInput) < AbsoluteLeft(statusLabel) &&
     AbsoluteRight(statusLabel) < AbsoluteLeft(collapseButton),
     "대상/상태 영역의 컨트롤 배치 순서가 올바르지 않습니다.");
+Assert(
+    annotationTool.ClientSize.Width - rightGuide <= AbsoluteLeft(targetInput) + 12,
+    "마킹 도구 오른쪽 여백이 왼쪽 여백보다 과하게 큽니다.");
+var moveButton = annotationControls.OfType<Button>().Single(button => button.Text == "선택/이동");
+var exitButton = annotationControls.OfType<Button>().Single(button => button.Text == "마킹 종료");
+Assert(
+    AbsoluteTop(moveButton) == AbsoluteTop(exitButton),
+    $"편집/캡처 일반 버튼과 마킹 종료 버튼 시작 높이가 다릅니다. move={AbsoluteTop(moveButton)}, exit={AbsoluteTop(exitButton)}");
+Assert(
+    moveButton.Parent!.ClientSize.Height - (moveButton.Top + moveButton.Height + moveButton.Margin.Bottom) >= 0,
+    "편집/캡처 일반 버튼 아래쪽 외곽선이 잘릴 수 있습니다.");
 
 if (args.Contains("--preview", StringComparer.OrdinalIgnoreCase))
 {
